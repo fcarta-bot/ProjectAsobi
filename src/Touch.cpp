@@ -47,6 +47,7 @@ static const ButtonSpec BUTTONS[] = {
 constexpr float STICK_RADIUS = 80;        // quanto spostare il dito per correre al massimo
 constexpr float STICK_ZONE_X = 0.45f;     // lo stick si appoggia nella parte sinistra dello schermo...
 constexpr float STICK_ZONE_TOP = 0.25f;   // ...sotto questa quota (sopra ci sono vita e armi)
+constexpr float LOOK_DRAG_SLOP = 18.0f;    // se il dito lascia il tasto ATTACCA oltre questa soglia, passa in mira libera
 constexpr Vector2 STICK_HOME{ 160, -170 }; // dove si disegna lo stick a riposo (dall'angolo in basso a sinistra)
 
 static float Scale() {
@@ -118,6 +119,16 @@ void TouchControls::Update() {
         if (f.role == Role::Button) {
             const ButtonSpec& b = BUTTONS[f.button];
             down[b.id] = true;
+            // Se il dito resta sul tasto ATTACCA ma si trascina troppo, passa in mira libera,
+            // cosi' i touch del tablet diventano più naturali e non restano “bloccati” sul bottone.
+            if (b.look && Vector2Length(Vector2Subtract(f.pos, f.start)) > LOOK_DRAG_SLOP) {
+                f.role = Role::Look;
+                down[b.id] = true;
+            }
+        }
+        if (f.role == Role::Button) {
+            const ButtonSpec& b = BUTTONS[f.button];
+            down[b.id] = true;
             if (b.look) lookDx += f.pos.x - f.last.x;
         } else if (f.role == Role::Stick) {
             Vector2 d = Vector2Scale(Vector2Subtract(f.pos, f.start), 1.0f / (STICK_RADIUS * s));
@@ -129,6 +140,8 @@ void TouchControls::Update() {
             }
             move = len < 0.15f ? Vector2{ 0, 0 } : d;
         } else if (f.role == Role::Look) {
+            if (f.button >= 0 && f.button < (int)(sizeof(BUTTONS) / sizeof(BUTTONS[0])) && BUTTONS[f.button].look)
+                down[BUTTONS[f.button].id] = true;
             lookDx += f.pos.x - f.last.x;
         }
         f.last = f.pos;
