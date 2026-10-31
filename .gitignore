@@ -1,0 +1,7 @@
+# Cartelle di compilazione (si rigenerano)
+cmake-build-*/
+build-*/
+# Impostazioni personali di CLion
+.idea/
+# File privato dell'utente
+UserAuthenticationRoute.txt
