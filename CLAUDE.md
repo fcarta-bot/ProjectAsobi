@@ -24,6 +24,11 @@ cmake --build cmake-build-debug --target ProjectAsobi
 - File nuovi in `src/` vanno aggiunti a `add_executable` in `CMakeLists.txt`.
 - Linker: niente `-static` completo (rompe col MinGW di CLion); si usa `-static-libgcc -static-libstdc++`.
 - Connettore CLion (MCP): `execute_run_configuration` con `waitForExit=true` va in errore, usa `false`.
+- **Versione browser / iPad** (branch `ipad-web`): `.\web\build-web.ps1` (Emscripten in `C:\Users\flavi\emsdk`,
+  Python vero in `...\Python313\python.exe`: il `python` nel PATH e' quello finto dello Store).
+  Esce in `build-web/index.html|js|wasm`. Codice solo-web dietro `#if defined(__EMSCRIPTEN__)`;
+  niente ciclo `while` in main (lo fa `emscripten_set_main_loop`). Per provarla serve un server web locale.
+- Git: repository nella cartella del progetto; `main` = versione Windows di partenza.
 
 ## Architettura in breve
 - La logica sta su una **mappa 2D in pixel** (casella = `TILE` = 32 px); il 3D e' solo disegno:
@@ -35,6 +40,8 @@ cmake --build cmake-build-debug --target ProjectAsobi
 - Artefatti: l'ordine di `ArtifactId` deve corrispondere a `AllArtifacts()`; idem `WeaponId` / `AllWeapons()`.
 - Tasti menu del joystick: **Options/START = menu di partita**, **touchpad/Share/PS = menu di gioco**.
   Il touchpad PS (tasto grezzo 13) si legge da GLFW in `PadRaw.cpp`. Nomi dei tasti: `Input::Btn()`.
+- Touch: `Touch.cpp` (tabella `BUTTONS`), dita lette in `PadRaw.cpp`. `Input::UsingTouch()` decide se mostrare i
+  tasti e i testi "touch"; col touch il mouse va ignorato (raylib trasforma i tocchi in click).
 
 ## Trappole di raylib gia' incontrate
 - raylib disegna a blocchi: prima di cambiare culling o depth mask chiama `rlDrawRenderBatchActive()`.

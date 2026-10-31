@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD 20)
 include(FetchContent)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
+if (EMSCRIPTEN)
+    set(PLATFORM Web CACHE STRING "" FORCE) # raylib per browser (WebGL)
+endif()
 FetchContent_Declare(
     raylib
     URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
@@ -23,6 +26,7 @@ add_executable(ProjectAsobi
     src/Artifacts.cpp
     src/Input.cpp
     src/PadRaw.cpp
+    src/Touch.cpp
     src/Props.cpp
     src/Sky.cpp
     src/Weapons.cpp
@@ -37,8 +41,20 @@ add_executable(ProjectAsobi
     src/link/ControllerLink_Unsupported.cpp
 )
 target_link_libraries(ProjectAsobi PRIVATE raylib)
+
+if (EMSCRIPTEN)
+    # Versione per browser (iPad): produce index.html + index.js + index.wasm da mettere su un sito.
+    # Si compila con Emscripten, vedi "Versione iPad" nel README
+    set_target_properties(ProjectAsobi PROPERTIES OUTPUT_NAME "index" SUFFIX ".html")
+    target_link_options(ProjectAsobi PRIVATE
+        -sUSE_GLFW=3 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB
+        "--shell-file=${CMAKE_SOURCE_DIR}/web/shell.html")
+    set_property(TARGET ProjectAsobi APPEND PROPERTY LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/shell.html")
+endif()
 # GLFW (dentro raylib) serve a PadRaw.cpp per leggere i tasti che raylib non conosce, come il touchpad PS
-target_include_directories(ProjectAsobi PRIVATE "${raylib_SOURCE_DIR}/src/external/glfw/include")
+if (NOT EMSCRIPTEN)
+    target_include_directories(ProjectAsobi PRIVATE "${raylib_SOURCE_DIR}/src/external/glfw/include")
+endif()
 
 if (WIN32)
     # runtimeobject: API moderna di Windows (WinRT); bthprops: rilevamento dell'adattatore Bluetooth

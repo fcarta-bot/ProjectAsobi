@@ -13,6 +13,7 @@ constexpr float EYE_HEIGHT = 0.6f;     // altezza degli occhi sopra i piedi, in 
 constexpr float BASE_FOV = 75.0f;      // campo visivo verticale in gradi
 constexpr float TURN_SPEED = 3.0f;     // radianti al secondo con stick o frecce
 constexpr float MOUSE_TURN = 0.0025f;  // radianti per pixel di mouse
+constexpr float TOUCH_TURN = 0.005f;   // radianti per pixel trascinato sullo schermo touch
 constexpr float GRAVITY = 22.0f;       // caselle al secondo quadrato
 constexpr float JUMP_SPEED = 7.0f;     // basta per saltare su un'auto (circa 1.1 caselle)
 constexpr float PLAYER_SHOT_H = 0.45f; // altezza dei colpi sopra i piedi
@@ -145,7 +146,7 @@ void Game::SyncCamera() {
 
 // In partita il mouse sparisce e gira la visuale; nei menu torna il puntatore normale
 void Game::UpdateCursorLock() {
-    bool want = state == State::Playing && IsWindowFocused();
+    bool want = state == State::Playing && IsWindowFocused() && !input.UsingTouch(); // col touch non serve
     if (want == cursorLocked) return;
     if (want) DisableCursor();
     else EnableCursor();
@@ -246,6 +247,10 @@ void Game::RecomputeStats() {
 
 void Game::Update(float dt) {
     dt = std::min(dt, 0.05f); // evita salti enormi se il gioco si blocca un attimo
+    // Quali tasti a schermo mostrare (touch): in partita, nelle animazioni o nei menu
+    input.SetTouchLayout(state == State::Playing ? TouchControls::Layout::Game
+                         : state == State::Intro || state == State::GameOver ? TouchControls::Layout::Tap
+                                                                            : TouchControls::Layout::Menu);
     input.Update();
     link->Update();
     toastTimer -= dt;
@@ -307,7 +312,7 @@ void Game::Update(float dt) {
         // Prima l'animazione del risveglio (si puo' saltare), poi si ricomincia a sognare
         deathTime += dt;
         if (deathTime < WakeUp::END) {
-            if (input.ConfirmPressed()) deathTime = WakeUp::END;
+            if (input.ConfirmPressed() || input.BackPressed()) deathTime = WakeUp::END;
         } else if (IsKeyPressed(KEY_R) || input.ConfirmPressed()) {
             NewRun();
             fadeFromBlack = 1.0f;
@@ -348,6 +353,7 @@ void Game::UpdatePlayer(float dt) {
     // Girarsi: mouse (catturato) oppure stick destro / frecce
     float turn = input.TurnAxis() * TURN_SPEED * dt;
     if (cursorLocked && !skipMouseDelta) turn += GetMouseDelta().x * MOUSE_TURN;
+    turn += input.TouchLook() * TOUCH_TURN;
     skipMouseDelta = false;
     player.yaw = fmodf(player.yaw + turn, 2 * PI);
     player.aim = { cosf(player.yaw), sinf(player.yaw) };
@@ -757,6 +763,7 @@ void Game::Draw() {
         ClearBackground(BLACK);
         DrawIntro(cutsceneTime);
         if (state == State::ControllerMenu) DrawControllerMenu();
+        input.DrawTouch();
         DrawToast();
         return;
     }
@@ -780,6 +787,7 @@ void Game::Draw() {
     if (state == State::Paused) DrawPause();
     if (state == State::MatchMenu) DrawMatchMenu();
     if (state == State::ControllerMenu) DrawControllerMenu();
+    input.DrawTouch(); // tasti a schermo (solo se si sta usando il touch)
     DrawToast();
 }
 
@@ -1062,7 +1070,7 @@ void Game::DrawWorldOverlay() const {
 
     // Suggerimenti contestuali vicino ad armi, artefatti e uscita, sopra il mirino
     if (state != State::Playing) return;
-    const char* key = input.UsingPad() ? input.Btn(GAMEPAD_BUTTON_RIGHT_FACE_LEFT) : "E";
+    const char* key = input.UsingTouch() ? "PRENDI" : input.UsingPad() ? input.Btn(GAMEPAD_BUTTON_RIGHT_FACE_LEFT) : "E";
     int weapon = NearestPickup(48, true), artifact = NearestPickup(48, false);
     Rectangle card{ sw / 2.0f - 190, sh / 2.0f - 200, 380, 104 };
     if (weapon >= 0) {
@@ -1152,7 +1160,7 @@ void Game::DrawHud() const {
     }
 
     // Pannello destro: elementi e sinergie attive
-    int px = sw - 270, py = 20;
+    int px = sw - 270, py = input.UsingTouch() ? 92 : 20; // col touch in alto a destra ci sono i tasti menu
     DrawRectangle(px - 10, py - 8, 260, 150 + 40 * (int)ActiveSynergies(inventory).size(), { 0, 0, 0, 140 });
     DrawText("Elementi", px, py, 20, WHITE);
     py += 26;
@@ -1172,7 +1180,11 @@ void Game::DrawHud() const {
         py += 40;
     }
 
-    // Inventario in basso
+    // Inventario in basso. Col touch li' ci sono stick e tasti: l'inventario si vede nel menu BORSA
+    if (input.UsingTouch()) {
+        DrawIntroTitle(d);
+        return;
+    }
     const int slotW = 220, slotH = 64, gap = 10;
     int total = INVENTORY_SIZE * slotW + (INVENTORY_SIZE - 1) * gap;
     int x0 = (sw - total) / 2, y = sh - slotH - 16;
@@ -1193,8 +1205,12 @@ void Game::DrawHud() const {
             DrawText("vuoto", (int)r.x + 10, (int)r.y + 22, 16, DARKGRAY);
         }
     }
+    DrawIntroTitle(d);
+}
 
-    // Titolo del distretto all'ingresso di ogni piano
+// Titolo del distretto all'ingresso di ogni piano
+void Game::DrawIntroTitle(const District& d) const {
+    int sw = GetScreenWidth(), sh = GetScreenHeight();
     if (introTimer > 0) {
         float alpha = std::min(1.0f, introTimer);
         DrawTextCentered(d.city, sw / 2 + 3, sh / 3 + 3, 72, Fade(BLACK, alpha * 0.6f));
@@ -1263,7 +1279,7 @@ void Game::DrawGameOver() const {
     // Il giocatore si sveglia di soprassalto dall'incubo...
     DrawWakeUp(deathTime);
     if (deathTime < WakeUp::END - 0.6f) {
-        DrawText("Invio / A: salta", GetScreenWidth() - 170, 16, 16, Fade(WHITE, 0.5f));
+        if (!input.UsingTouch()) DrawText("Invio / A: salta", GetScreenWidth() - 170, 16, 16, Fade(WHITE, 0.5f));
         return;
     }
     // ...e poi il resoconto del sogno

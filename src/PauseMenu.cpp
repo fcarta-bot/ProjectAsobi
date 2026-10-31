@@ -5,6 +5,14 @@
 
 enum { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_QUIT, PAUSE_COUNT };
 
+// Nel browser (iPad) schermo intero e uscita li gestisce la pagina web: quelle voci non ci sono
+#if defined(__EMSCRIPTEN__)
+static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_NEW_RUN };
+#else
+static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_QUIT };
+#endif
+constexpr int PAUSE_SHOWN = sizeof(PAUSE_ITEMS) / sizeof(PAUSE_ITEMS[0]);
+
 // Schermo intero "senza bordi": una finestra grande quanto il monitor. Non cambia la risoluzione
 // dello schermo, quindi passare ad altre finestre (Alt+Tab) e' istantaneo
 void Game::ToggleFullscreenMode() {
@@ -38,11 +46,11 @@ void Game::UpdatePause() {
         OpenMatchMenu();
         return;
     }
-    if (input.UpPressed()) pauseIndex = (pauseIndex + PAUSE_COUNT - 1) % PAUSE_COUNT;
-    if (input.DownPressed()) pauseIndex = (pauseIndex + 1) % PAUSE_COUNT;
+    if (input.UpPressed()) pauseIndex = (pauseIndex + PAUSE_SHOWN - 1) % PAUSE_SHOWN;
+    if (input.DownPressed()) pauseIndex = (pauseIndex + 1) % PAUSE_SHOWN;
     if (!input.ConfirmPressed()) return;
 
-    switch (pauseIndex) {
+    switch (PAUSE_ITEMS[pauseIndex]) {
         case PAUSE_RESUME:     state = pauseReturnState; break;
         case PAUSE_CONTROLLER: OpenControllerMenu(""); break; // chiudendolo si torna qui
         case PAUSE_CONTROLS:   pauseShowControls = true; break;
@@ -114,12 +122,14 @@ void Game::DrawPause() const {
     const bool full = IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
     const float w = 560, x = (sw - w) / 2;
     float y = 160;
-    for (int i = 0; i < PAUSE_COUNT; ++i) {
+    for (int k = 0; k < PAUSE_SHOWN; ++k) {
+        const int i = PAUSE_ITEMS[k];
         float h = items[i].desc ? 70.0f : 52.0f;
         const char* status = i == PAUSE_FULLSCREEN ? (full ? "SI" : "NO") : "";
-        DrawMenuItem({ x, y, w, h }, items[i].label, i == pauseIndex, true, status, full ? GREEN : GRAY, items[i].desc);
+        DrawMenuItem({ x, y, w, h }, items[i].label, k == pauseIndex, true, status, full ? GREEN : GRAY, items[i].desc);
         y += h + 8;
     }
-    DrawTextCentered("Su/Giu scegli  |  Invio o A conferma  |  Esc, B o touchpad riprende",
-                     sw / 2, sh - 50, 18, Fade(WHITE, 0.7f));
+    if (!input.UsingTouch())
+        DrawTextCentered("Su/Giu scegli  |  Invio o A conferma  |  Esc, B o touchpad riprende",
+                         sw / 2, sh - 50, 18, Fade(WHITE, 0.7f));
 }

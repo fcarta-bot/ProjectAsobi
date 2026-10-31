@@ -119,6 +119,18 @@ void Game::DrawTutorial() const {
             text = "Ti sei perso? Ti ho messo una freccia in alto. Non dirlo a nessuno.";
             break;
     }
+    // Col touch si parla dei tasti a schermo
+    if (input.UsingTouch()) switch (activeTip) {
+        case TIP_MOVE:   text = "Ehi, non stare li' impalato! Trascina il dito a sinistra per muoverti."; break;
+        case TIP_LOOK:   text = "Trascina il dito a destra per guardarti intorno: il labirinto e' grande."; break;
+        case TIP_ATTACK: text = "Ti stanno attaccando! Tieni premuto ATTACCA (e trascinalo per mirare)."; break;
+        case TIP_JUMP:   text = "E' basso: saltalo! Tocca SALTA."; break;
+        case TIP_PICKUP: text = "Quello e' per te: prendilo con PRENDI."; break;
+        case TIP_DASH:   text = "Ti colpiscono troppo! Tocca SCATTO: per un attimo nessuno ti tocca."; break;
+        case TIP_SWAP:   text = "Hai due armi, sai? Cambiale con ARMA."; break;
+        case TIP_MENU:   text = "Tocca BORSA: mappa, inventario e statistiche."; break;
+        default: break;
+    }
     static const char* praise[] = { "Ecco, bravo!", "Visto? Facile.", "Ora si ragiona!", "Perfetto. Mi stai divertendo." };
     if (tipPraise > 0) text = praise[activeTip % 4];
 

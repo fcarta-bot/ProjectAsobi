@@ -50,6 +50,23 @@ lo vedi nella riga in basso e in **Pausa > Comandi**.
 
 In partita il mouse viene "catturato" per girare la visuale; nei menu torna il puntatore normale.
 
+### Touch (iPad)
+
+Appena si tocca lo schermo compaiono i comandi touch. Spariscono se si usa la tastiera o un joystick.
+
+| Azione | Come |
+|---|---|
+| Muoviti | Appoggia il dito nella meta' sinistra e trascinalo (stick virtuale) |
+| Girati | Trascina il dito nella meta' destra |
+| Attacca | Tieni premuto **ATTACCA**. Trascinandolo ti giri, cosi' attacchi e miri insieme |
+| Salta / scatto / cambia arma / raccogli | **SALTA**, **SCATTO**, **ARMA**, **PRENDI** |
+| Menu di partita / menu di gioco | **BORSA** e il tasto pausa, in alto a destra |
+| Nei menu | Frecce a sinistra, **OK** e **INDIETRO** a destra |
+| Nelle animazioni | Tocca ovunque per andare avanti, **SALTA** per saltarle |
+
+Con il touch l'inventario non e' in basso (li' ci sono i comandi): si vede nel menu **BORSA**.
+La disposizione dei tasti sta tutta nella tabella `BUTTONS` in `src/Touch.cpp`.
+
 ### Il menu di partita
 
 Si apre con **Options** (o Tab) e si sfoglia con L1 / R1 o le frecce. Quattro schede:
@@ -136,7 +153,7 @@ La ricerca e l'abbinamento stanno in `src/link/`, con un'implementazione per pia
 |---|---|
 | Windows | `ControllerLink_Windows.cpp`: API moderna di Windows (WinRT), Bluetooth classico e LE |
 | Android | da scrivere quando porteremo il gioco su Android (l'API Bluetooth di Android permette l'abbinamento dall'app) |
-| Console / iOS | `ControllerLink_Unsupported.cpp`: i controller li abbina il sistema, il gioco li rileva e basta |
+| Console / iOS / browser | `ControllerLink_Unsupported.cpp`: i controller li abbina il sistema, il gioco li rileva e basta |
 
 ## Il cuore del gioco: artefatti e sinergie
 
@@ -150,7 +167,7 @@ La ricerca e l'abbinamento stanno in `src/link/`, con un'implementazione per pia
 
 | File | Contenuto |
 |---|---|
-| `src/main.cpp` | Finestra e ciclo principale |
+| `src/main.cpp` | Finestra e ciclo principale (nel browser il ciclo lo fa il browser) |
 | `src/Game.hpp/.cpp` | Logica di gioco: giocatore (salto, scatto), colpi, armi, telecamera, disegno dei nemici, HUD |
 | `src/EnemyAI.cpp` | IA dei nemici: vista e interesse, movimento, sciami di goblin, comportamento di ogni tipo |
 | `src/GameMaster.hpp/.cpp` | Il "regista": sceglie e piazza i nemici di ogni piano e comanda le squadre di robot |
@@ -161,7 +178,8 @@ La ricerca e l'abbinamento stanno in `src/link/`, con un'implementazione per pia
 | `src/Weapons.hpp/.cpp` | Le armi: caratteristiche, modellini a terra, arma in mano |
 | `src/Artifacts.hpp/.cpp` | Artefatti, sinergie e calcolo delle statistiche |
 | `src/Input.hpp/.cpp` | Tastiera, mouse e joystick (collegamento, zona morta, comandi, nomi dei tasti) |
-| `src/PadRaw.hpp/.cpp` | Tasti che raylib non conosce, letti direttamente da GLFW (il touchpad PlayStation) |
+| `src/PadRaw.hpp/.cpp` | Input che raylib non vede o non legge bene: touchpad PlayStation (GLFW o browser), dita sullo schermo |
+| `src/Touch.hpp/.cpp` | Comandi touch: stick virtuale, trascinare per girarsi, tasti a schermo (tabella `BUTTONS`) |
 | `src/PauseMenu.cpp` | Menu di gioco (pausa) e pagina dei comandi |
 | `src/MatchMenu.cpp` | Menu di partita: inventario, armi, mappa esplorata, statistiche della run |
 | `src/Guide.cpp` | Freccia che indica la strada per il torii quando ti perdi |
@@ -170,6 +188,7 @@ La ricerca e l'abbinamento stanno in `src/link/`, con un'implementazione per pia
 | `src/ControllerMenu.cpp` | Menu Controller: elenco, nuovo joystick (Bluetooth / cavo / pennetta), prova tasti |
 | `src/link/` | Ricerca e abbinamento dei controller, un file per piattaforma |
 | `src/Ui.hpp` | Piccole funzioni di disegno condivise |
+| `web/` | Versione browser: pagina per iPad (`shell.html`) e script di compilazione (`build-web.ps1`) |
 
 La logica resta su una mappa 2D in pixel (caselle da 32): il 3D e' solo il modo di disegnarla.
 Nel mondo 3D una casella misura 1 unita' e `To3D()` converte le posizioni. Le quote (salti, altezza
@@ -183,6 +202,22 @@ in `AllArtifacts()`, **nello stesso ordine**. Per le armi vale lo stesso con `We
 Apri la cartella in **CLion** e premi Run (configurazione `ProjectAsobi`).
 Al primo caricamento CMake scarica e compila raylib da solo: serve la connessione internet
 e ci vuole circa un minuto.
+
+### Versione iPad (browser)
+
+Un'app iPad vera si compila solo su un Mac con Xcode. Al suo posto il gioco si compila per il
+**browser** con Emscripten. Su iPad si apre da Safari e con **Condividi > Aggiungi alla schermata Home**
+diventa un'icona che si apre a tutto schermo, come un'app.
+
+1. Installa Emscripten una volta sola, in `C:\Users\flavi\emsdk`
+   (`git clone https://github.com/emscripten-core/emsdk`, poi `emsdk install latest` e `emsdk activate latest`).
+2. Da PowerShell, nella cartella del progetto: `.\web\build-web.ps1`
+3. In `build-web/` trovi `index.html`, `index.js` e `index.wasm`: vanno messi su un sito
+   (ad esempio GitHub Pages o itch.io). Aprire `index.html` con doppio clic non funziona,
+   perche' il browser vuole un indirizzo web.
+
+Nel browser il menu di gioco non ha "Schermo intero" ne' "Esci": li gestisce la pagina.
+L'iPad va tenuto in orizzontale. Va bene anche un joystick abbinato all'iPad via Bluetooth.
 
 ## Idee per i prossimi passi
 

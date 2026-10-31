@@ -1,7 +1,8 @@
 #pragma once
 #include "raylib.h"
+#include "Touch.hpp"
 
-// Riunisce tastiera/mouse e joystick in un'unica interfaccia.
+// Riunisce tastiera/mouse, joystick e comandi touch in un'unica interfaccia.
 // Un joystick va "collegato" al gioco prima di poterlo usare: premendo START o A
 // su di esso, oppure scegliendolo dal menu Controller.
 class Input {
@@ -19,6 +20,12 @@ public:
     bool PadConnected() const { return pad >= 0; }
     bool UsingPad() const { return usingPad; } // l'ultimo dispositivo usato e' il joystick
     bool LostPad() const { return lostPad; }   // vero nel frame in cui il joystick collegato si stacca
+
+    // Touch: l'ultimo dispositivo usato e' lo schermo (iPad). Il gioco dice quali tasti mostrare
+    bool UsingTouch() const { return usingTouch; }
+    void SetTouchLayout(TouchControls::Layout l) { touch.SetLayout(l); }
+    float TouchLook() const { return usingTouch ? touch.LookDelta() : 0.0f; } // pixel trascinati per girarsi
+    void DrawTouch() const { if (usingTouch) touch.Draw(); }
 
     // Indice di un joystick non ancora collegato su cui e' appena stato premuto START o A, altrimenti -1
     int NewPadRequest() const;
@@ -59,10 +66,14 @@ public:
 private:
     bool PadDown(int button) const;
     bool PadPressed(int button) const;
+    bool ScreenDown(TouchButton b) const { return usingTouch && touch.Down(b); }       // tasto a schermo
+    bool ScreenPressed(TouchButton b) const { return usingTouch && touch.Pressed(b); }
     Vector2 Stick(int axisX, int axisY) const;
 
     int pad = -1;
     bool usingPad = false;
+    bool usingTouch = false;
+    TouchControls touch;
     bool lostPad = false;
     bool up = false, down = false, left = false, right = false;
     bool stickUpHeld = false, stickDownHeld = false, stickLeftHeld = false, stickRightHeld = false;

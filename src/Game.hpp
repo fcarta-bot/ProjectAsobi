@@ -275,6 +275,7 @@ private:
     void DrawWorldOverlay() const; // barre della vita e testi sopra le cose visibili
     void DrawFirstPerson() const;  // mirino, arma in mano, lampo rosso quando si e' colpiti
     void DrawHud() const;
+    void DrawIntroTitle(const District& d) const;
     void DrawInventoryChoice() const;
     void DrawGameOver() const;
     void DrawControllerMenu() const;
