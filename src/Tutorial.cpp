@@ -82,57 +82,57 @@ void Game::UpdateTutorials(float dt) {
 
 void Game::DrawTutorial() const {
     if (activeTip < 0 || state != State::Playing) return;
-    const bool pad = input.UsingPad();
+    // Ogni consiglio in tre versioni: joystick, touch, tastiera
+    const bool pad = input.UsingPad(), touch = input.UsingTouch();
+    auto say = [&](const std::string& padText, const char* touchText, const char* keyText) {
+        return pad ? padText : touch ? std::string(touchText) : std::string(keyText);
+    };
     std::string text;
     switch (activeTip) {
         case TIP_MOVE:
-            text = pad ? "Ehi, non stare li' impalato! Muoviti con lo stick sinistro." : "Ehi, non stare li' impalato! Muoviti con W A S D.";
+            text = say("Guarda che il labirinto non viene da te. Muoviti con lo stick sinistro!",
+                       "Guarda che il labirinto non viene da te. Trascina il dito a sinistra per muoverti!",
+                       "Guarda che il labirinto non viene da te. Muoviti con W A S D!");
             break;
         case TIP_LOOK:
-            text = pad ? "Guardati intorno con lo stick destro: il labirinto e' grande." : "Guardati intorno col mouse: il labirinto e' grande.";
+            text = say("Prova a guardarti intorno con lo stick destro: c'e' un sacco da vedere.",
+                       "Prova a trascinare il dito a destra: ti giri e vedi cosa c'e' intorno.",
+                       "Prova a muovere il mouse: ti giri e vedi cosa c'e' intorno.");
             break;
         case TIP_ATTACK:
-            text = pad ? TextFormat("Ti stanno attaccando! Colpisci con %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_TRIGGER_2))
-                       : "Ti stanno attaccando! Colpisci col tasto sinistro del mouse.";
+            text = say(TextFormat("Ehi, ti stanno menando! Rispondi con %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_TRIGGER_2)),
+                       "Ehi, ti stanno menando! Tieni premuto ATTACCA, e trascinalo per mirare.",
+                       "Ehi, ti stanno menando! Rispondi col tasto sinistro del mouse.");
             break;
         case TIP_JUMP:
-            text = pad ? TextFormat("E' basso: saltalo! Premi %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_FACE_DOWN))
-                       : "E' basso: saltalo! Premi Spazio.";
+            text = say(TextFormat("E' bassa, scavalcala! Salta con %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_FACE_DOWN)),
+                       "E' bassa, scavalcala! Tocca SALTA.", "E' bassa, scavalcala! Salta con Spazio.");
             break;
         case TIP_PICKUP:
-            text = pad ? TextFormat("Quello e' per te: prendilo con %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_FACE_LEFT))
-                       : "Quello e' per te: prendilo con E.";
+            text = say(TextFormat("Te l'ho lasciato li' apposta: prendilo con %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_FACE_LEFT)),
+                       "Te l'ho lasciato li' apposta: tocca PRENDI.", "Te l'ho lasciato li' apposta: prendilo con E.");
             break;
         case TIP_DASH:
-            text = pad ? "Ti colpiscono troppo! Scatta con le frecce: per un attimo nessuno ti tocca."
-                       : "Ti colpiscono troppo! Scatta con Shift: per un attimo nessuno ti tocca.";
+            text = say("Ti prendono sempre! Scatta con le frecce: mentre scatti nessuno ti tocca.",
+                       "Ti prendono sempre! Tocca SCATTO: mentre scatti nessuno ti tocca.",
+                       "Ti prendono sempre! Scatta con Shift: mentre scatti nessuno ti tocca.");
             break;
         case TIP_SWAP:
-            text = pad ? TextFormat("Hai due armi, sai? Cambiale con %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_FACE_UP))
-                       : "Hai due armi, sai? Cambiale con Q.";
+            text = say(TextFormat("Guarda che hai due armi. Cambiale con %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_FACE_UP)),
+                       "Guarda che hai due armi. Cambiale con ARMA.", "Guarda che hai due armi. Cambiale con Q.");
             break;
         case TIP_MENU:
-            text = pad ? TextFormat("Premi %s: mappa, inventario e statistiche.", input.Btn(GAMEPAD_BUTTON_MIDDLE_RIGHT))
-                       : "Premi Tab: mappa, inventario e statistiche.";
+            text = say(TextFormat("Dai un'occhiata con %s: mappa, zaino e le mie sfide.", input.Btn(GAMEPAD_BUTTON_MIDDLE_RIGHT)),
+                       "Dai un'occhiata alla BORSA: mappa, zaino e le mie sfide.",
+                       "Dai un'occhiata col tasto Tab: mappa, zaino e le mie sfide.");
             break;
         default:
-            text = "Ti sei perso? Ti ho messo una freccia in alto. Non dirlo a nessuno.";
+            text = "Ti sei perso, eh? Ti ho messo una freccia in alto. Ma non dirlo in giro.";
             break;
     }
-    // Col touch si parla dei tasti a schermo
-    if (input.UsingTouch()) switch (activeTip) {
-        case TIP_MOVE:   text = "Ehi, non stare li' impalato! Trascina il dito a sinistra per muoverti."; break;
-        case TIP_LOOK:   text = "Trascina il dito a destra per guardarti intorno: il labirinto e' grande."; break;
-        case TIP_ATTACK: text = "Ti stanno attaccando! Tieni premuto ATTACCA (e trascinalo per mirare)."; break;
-        case TIP_JUMP:   text = "E' basso: saltalo! Tocca SALTA."; break;
-        case TIP_PICKUP: text = "Quello e' per te: prendilo con PRENDI."; break;
-        case TIP_DASH:   text = "Ti colpiscono troppo! Tocca SCATTO: per un attimo nessuno ti tocca."; break;
-        case TIP_SWAP:   text = "Hai due armi, sai? Cambiale con ARMA."; break;
-        case TIP_MENU:   text = "Tocca BORSA: mappa, inventario e statistiche."; break;
-        default: break;
-    }
-    static const char* praise[] = { "Ecco, bravo!", "Visto? Facile.", "Ora si ragiona!", "Perfetto. Mi stai divertendo." };
+    static const char* praise[] = { "Ecco, cosi'!", "Visto? Non era difficile.", "Adesso si ragiona.", "Bene bene, mi stai divertendo." };
     if (tipPraise > 0) text = praise[activeTip % 4];
+
 
     // Entra con uno sbuffo di scintille, esce rimpicciolendosi
     float in = std::min(1.0f, tipTime / 0.35f);

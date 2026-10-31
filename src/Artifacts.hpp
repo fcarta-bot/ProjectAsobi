@@ -41,8 +41,11 @@ enum ArtifactId {
     A_OMAMORI, A_MANEKI_NEKO, A_DARUMA, A_LANTERNA_GION, A_SENSU, A_FURIN,
     A_TAMAHAGANE, A_SHURIKEN, A_KITSUNE_BI, A_TAKOYAKI, A_NEON, A_ORIZURU,
     A_SPECCHIO_YATA, A_KOBAN, A_SHIKA_SENBEI,
+    // Rari: solo come premio delle sfide del GameMaster
+    A_OROLOGIO, A_CORNICELLO, A_ACCHIAPPASOGNI, A_GIGLIO,
     A_COUNT
 };
+constexpr int A_FIRST_RARE = A_OROLOGIO;
 
 struct Artifact {
     const char* name;

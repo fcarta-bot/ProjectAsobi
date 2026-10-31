@@ -36,8 +36,13 @@ cmake --build cmake-build-debug --target ProjectAsobi
 - `Game` (Game.cpp) e' il centro; parti di `Game` stanno in file separati: `EnemyAI.cpp`, `PauseMenu.cpp`
   (menu di gioco), `MatchMenu.cpp` (menu di partita + mappa esplorata), `Guide.cpp`, `Tutorial.cpp`,
   `ControllerMenu.cpp`. `GameMaster` (regista dei nemici) e `Nav` (A* e mappa delle distanze) sono classi a se'.
-- Stati in `enum class State` (Intro, Playing, InventoryFull, GameOver, Paused, MatchMenu, ControllerMenu).
-- Artefatti: l'ordine di `ArtifactId` deve corrispondere a `AllArtifacts()`; idem `WeaponId` / `AllWeapons()`.
+- Stati in `enum class State` (Title, Intro, Playing, InventoryFull, GameOver, Paused, MatchMenu, ControllerMenu, Victory).
+- Giro del mondo: 16 citta' in `World.cpp` (`GetDistrict(i)`), ordine per run in `Game::tour`; usa sempre
+  `CurrentDistrict()`, mai `GetDistrict(floor)`. Facciate per stile (`Facade`) in `Dungeon.cpp`, profili in `Sky.cpp`.
+- Nemici: tabella `InfoOf()` + comportamenti delle leggende in `Legends.cpp`, disegno in `EnemyDraw.cpp`,
+  chi va dove in `GameMaster::PopulateFloor` (per paese). `Damageable()` esclude processione, Dahu, Uomo Nero nascosto.
+- Armi: designated initializers in `Weapons.cpp`, disegno per `WeaponShape`; leggendarie da `W_FIRST_LEGENDARY`.
+- Sfide in `Challenges.cpp`; salvataggi in `Save.cpp` (si salva solo se `runActive`, cioe' non nel menu iniziale).- Artefatti: l'ordine di `ArtifactId` deve corrispondere a `AllArtifacts()`; idem `WeaponId` / `AllWeapons()`.
 - Tasti menu del joystick: **Options/START = menu di partita**, **touchpad/Share/PS = menu di gioco**.
   Il touchpad PS (tasto grezzo 13) si legge da GLFW in `PadRaw.cpp`. Nomi dei tasti: `Input::Btn()`.
 - Touch: `Touch.cpp` (tabella `BUTTONS`), dita lette in `PadRaw.cpp`. `Input::UsingTouch()` decide se mostrare i

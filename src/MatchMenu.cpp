@@ -83,7 +83,7 @@ void Game::UpdateExploration(float dt) {
 // ---------------------------------------------------------------------------
 
 void Game::DrawMatchMenu() const {
-    const District& d = GetDistrict(floor);
+    const District& d = CurrentDistrict();
     int sw = GetScreenWidth(), sh = GetScreenHeight();
     DrawRectangle(0, 0, sw, sh, Fade({ 8, 8, 12, 255 }, 0.94f));
 
@@ -91,8 +91,8 @@ void Game::DrawMatchMenu() const {
     DrawText(TextFormat("Piano %d - %s: %s", floor, d.city, d.place), 60, 74, 20, d.accent);
 
     // Schede
-    static const char* names[TAB_COUNT] = { "Inventario", "Armi", "Mappa", "Statistiche" };
-    const float tabW = 200, tabH = 40;
+    static const char* names[TAB_COUNT] = { "Inventario", "Armi", "Mappa", "Sfide", "Statistiche" };
+    const float tabW = std::min(170.0f, (sw - 300.0f) / (float)TAB_COUNT - 8), tabH = 40; // lascia spazio al titolo a sinistra
     float tx = sw - 60 - (float)TAB_COUNT * (tabW + 8);
     for (int t = 0; t < TAB_COUNT; ++t) {
         Rectangle r{ tx + t * (tabW + 8), 34, tabW, tabH };
@@ -107,6 +107,7 @@ void Game::DrawMatchMenu() const {
         case TAB_INVENTORY: DrawMatchInventory(area); break;
         case TAB_WEAPONS:   DrawMatchWeapons(area); break;
         case TAB_MAP:       DrawMatchMap(area); break;
+        case TAB_CHALLENGES: DrawMatchChallenges(area); break;
         default:            DrawMatchStats(area); break;
     }
 
@@ -217,7 +218,7 @@ void Game::DrawMatchWeapons(Rectangle area) const {
 // La mappa mostra SOLO cio' che hai visto: niente cornice grande quanto il piano, niente bordi,
 // niente percentuali. Si inquadra sulla parte esplorata e si allarga man mano che scopri: il resto e' ignoto
 void Game::DrawMatchMap(Rectangle area) const {
-    const District& d = GetDistrict(floor);
+    const District& d = CurrentDistrict();
     const int W = dungeon.Width(), H = dungeon.Height();
     const float legendW = 300;
     const Rectangle view{ area.x, area.y, area.width - legendW - 30, area.height };
@@ -324,11 +325,16 @@ void Game::DrawMatchStats(Rectangle area) const {
     DrawText("La run", x, y, 24, WHITE);
     int ry = y + 40;
     int minutes = (int)runTime / 60, seconds = (int)runTime % 60;
-    StatRow(x, ry, colW, "Piano", TextFormat("%d (%s)", floor, GetDistrict(floor).city)); ry += 34;
+    StatRow(x, ry, colW, "Piano", TextFormat("%d (%s)", floor, CurrentDistrict().city)); ry += 34;
     StatRow(x, ry, colW, "Tempo", TextFormat("%d:%02d", minutes, seconds)); ry += 34;
     StatRow(x, ry, colW, "Nemici sconfitti", TextFormat("%d", kills), GOLD); ry += 34;
-    static const char* enemyNames[4] = { "  Goblin", "  Robot", "  Tengu", "  Oni" };
-    for (int t = 0; t < 4; ++t) { StatRow(x, ry, colW, enemyNames[t], TextFormat("%d", killsByType[t])); ry += 34; }
+    // Solo i tipi di nemico che hai incontrato davvero (sono 22), al massimo 6 righe
+    for (int t = 0, shown = 0; t < ENEMY_TYPE_COUNT && shown < 6; ++t) {
+        if (killsByType[t] == 0) continue;
+        StatRow(x, ry, colW, TextFormat("  %s", InfoOf((EnemyType)t).name), TextFormat("%d", killsByType[t]));
+        ry += 34;
+        shown++;
+    }
     StatRow(x, ry, colW, "Danno inflitto", TextFormat("%.0f", damageDealt)); ry += 34;
     StatRow(x, ry, colW, "Danno subito", TextFormat("%.0f", damageTaken), { 230, 110, 110, 255 }); ry += 34;
     StatRow(x, ry, colW, "Artefatti raccolti", TextFormat("%d", artifactsFound)); ry += 34;
@@ -347,4 +353,52 @@ void Game::DrawMatchStats(Rectangle area) const {
     StatRow(x, ry, colW, "Rubavita", TextFormat("%d%%", (int)(stats.lifesteal * 100))); ry += 34;
     StatRow(x, ry, colW, "Bruciatura", TextFormat("%.0f danni/s", stats.burnDps)); ry += 34;
     StatRow(x, ry, colW, "Fortuna (bottino)", TextFormat("%d%%", (int)(stats.dropChance * 100))); ry += 34;
+}
+
+// Quanto del piano hai visto (per la sfida dell'esploratore)
+float Game::ExploredFraction() const {
+    int seen = 0, total = 0;
+    for (int ty = 0; ty < dungeon.Height(); ++ty)
+        for (int tx = 0; tx < dungeon.Width(); ++tx) {
+            if (dungeon.IsSolid(tx, ty)) continue;
+            total++;
+            if (explored[ty * dungeon.Width() + tx]) seen++;
+        }
+    return total ? (float)seen / total : 0;
+}
+
+// Le sfide del GameMaster: a sinistra le tre per vincere la run, a destra quelle che regalano premi
+void Game::DrawMatchChallenges(Rectangle area) const {
+    const int colW = (int)(area.width - 40) / 2;
+    int x = (int)area.x, y = (int)area.y;
+    DrawText("Per vincere la run (ne basta una)", x, y, 22, GOLD);
+    DrawText("Diverti il GameMaster e ti lascera' svegliare da vincitore", x, y + 26, 14, LIGHTGRAY);
+    int ry = y + 56;
+    for (int v : victoryPicks) {
+        const Challenge& c = VictoryChallenge(v);
+        int p = VictoryProgress(v);
+        Rectangle r{ (float)x, (float)ry, (float)colW, 92 };
+        DrawRectangleRec(r, { 25, 25, 32, 255 });
+        DrawRectangleLinesEx(r, 2, p < 0 ? Color{ 120, 50, 50, 255 } : GOLD);
+        DrawText(c.name, x + 12, ry + 8, 20, WHITE);
+        DrawText(c.desc, x + 12, ry + 34, 15, LIGHTGRAY);
+        DrawText(TextFormat("Titolo: %s", c.prize), x + 12, ry + 56, 14, { 255, 220, 120, 255 });
+        const char* status = p < 0 ? "fallita" : TextFormat("%d / %d", std::min(p, c.target), c.target);
+        DrawText(status, x + colW - 12 - MeasureText(status, 18), ry + 8, 18, p < 0 ? RED : SKYBLUE);
+        ry += 102;
+    }
+
+    x += colW + 40;
+    DrawText("Premi lungo la strada", x, y, 22, GOLD);
+    ry = y + 34;
+    for (int i = 0; i < REWARD_COUNT; ++i) {
+        const Challenge& c = RewardChallenge(i);
+        bool done = rewardDone[i];
+        Color col = done ? Color{ 120, 220, 130, 255 } : WHITE;
+        DrawText(TextFormat("%s %s", done ? "[x]" : "[ ]", c.name), x, ry, 17, col);
+        const char* prog = done ? "fatto" : TextFormat("%d / %d", std::min(RewardProgress(i), c.target), c.target);
+        DrawText(prog, x + colW - MeasureText(prog, 16), ry, 16, done ? GREEN : SKYBLUE);
+        DrawText(TextFormat("%s  ->  %s", c.desc, c.prize), x + 18, ry + 19, 13, Fade(WHITE, 0.6f));
+        ry += 40;
+    }
 }

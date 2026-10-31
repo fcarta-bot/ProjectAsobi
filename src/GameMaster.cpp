@@ -29,17 +29,95 @@ void GameMaster::PopulateFloor(Game& g) {
     auto takeRoom = [&]() { return free.empty() ? exitRoom : free[next++ % free.size()]; };
 
     int f = g.floor;
-    int goblinSwarms = 1 + f / 3;
-    int robotSquads = 1 + (f - 1) / 3;
-    int tengu = 2 + f / 2;
-    for (int k = 0; k < goblinSwarms; ++k)
-        SpawnSwarm(g, EnemyType::Goblin, takeRoom(), GetRandomValue(GOBLIN_SWARM_MIN, std::min(GOBLIN_SWARM_MAX, 10 + f * 2)));
-    for (int k = 0; k < robotSquads; ++k)
-        SpawnSwarm(g, EnemyType::Robot, takeRoom(), GetRandomValue(ROBOT_SQUAD_MIN, std::min(ROBOT_SQUAD_MAX, 3 + f)));
-    for (int k = 0; k < tengu; ++k) g.SpawnEnemy(EnemyType::Tengu, g.FreeSpotInRoom(rooms[takeRoom()], 14));
+    const Country country = g.CurrentDistrict().country;
+    auto alone = [&](EnemyType type, int count) {
+        for (int k = 0; k < count; ++k) g.SpawnEnemy(type, g.FreeSpotInRoom(rooms[takeRoom()], 14));
+    };
+    auto group = [&](EnemyType type, int groups, int minSize, int maxSize) {
+        for (int k = 0; k < groups; ++k) SpawnSwarm(g, type, takeRoom(), GetRandomValue(minSize, maxSize));
+    };
 
-    Enemy& oni = g.SpawnEnemy(EnemyType::Oni, g.FreeSpotInRoom(rooms[exitRoom], 24));
-    oni.home = Vector2Add(rooms[exitRoom].Center(), { TILE * 1.5f, 0 }); // accanto al torii, non sopra
+    // I servitori del GM (goblin e robot) li ha portati in tutto il mondo; in Giappone sono di piu'
+    bool japan = country == Country::Japan;
+    int goblinSwarms = japan ? 1 + f / 3 : f / 5;
+    int robotSquads = japan ? 1 + (f - 1) / 3 : f / 4;
+    group(EnemyType::Goblin, goblinSwarms, GOBLIN_SWARM_MIN, std::min(GOBLIN_SWARM_MAX, 10 + f * 2));
+    group(EnemyType::Robot, robotSquads, ROBOT_SQUAD_MIN, std::min(ROBOT_SQUAD_MAX, 3 + f));
+
+    // Le creature del posto, e il guardiano del torii
+    EnemyType guardian = EnemyType::Oni;
+    g.fearFloor = false;
+    switch (country) {
+        case Country::Japan:
+            alone(EnemyType::Tengu, 2 + f / 2);
+            break;
+        case Country::USA:
+            alone(EnemyType::Mothman, 2 + f / 4);
+            alone(EnemyType::JerseyDevil, 1 + f / 8);
+            group(EnemyType::Goblin, 1, GOBLIN_SWARM_MIN, 10);
+            guardian = EnemyType::Wendigo;
+            break;
+        case Country::Italy:
+            group(EnemyType::Gnefro, 2 + f / 5, 4, 7);
+            alone(EnemyType::Babau, 1);
+            alone(EnemyType::Tengu, 1 + f / 4);
+            guardian = EnemyType::Badalisc;
+            g.fearFloor = true;
+            break;
+        case Country::Germany:
+            group(EnemyType::Wolpertinger, 2 + f / 6, 2, 4);
+            alone(EnemyType::Nachzehrer, 2 + f / 5);
+            guardian = EnemyType::Grossmann;
+            break;
+        case Country::France:
+            alone(EnemyType::Matagot, 2 + f / 5);
+            alone(EnemyType::Dahu, 1);
+            group(EnemyType::Goblin, 1, GOBLIN_SWARM_MIN, 10);
+            guardian = EnemyType::Gevaudan;
+            break;
+        case Country::England:
+            group(EnemyType::Redcap, 2 + f / 6, 2, 3);
+            alone(EnemyType::SpringJack, 1 + f / 6);
+            guardian = EnemyType::BlackShuck;
+            break;
+        case Country::Spain:
+            group(EnemyType::Dip, 2 + f / 6, 2, 3);
+            alone(EnemyType::Tengu, 1);
+            guardian = EnemyType::Cuco;
+            g.fearFloor = true;
+            break;
+    }
+
+    Enemy& boss = g.SpawnEnemy(guardian, g.FreeSpotInRoom(rooms[exitRoom], 24));
+    boss.home = Vector2Add(rooms[exitRoom].Center(), { TILE * 1.5f, 0 }); // accanto al torii, non sopra
+    boss.anchor = rooms[exitRoom].Center();
+    boss.territory = TILE * 10.0f;
+    if (guardian == EnemyType::Badalisc) boss.hostile = false;   // neutrale finche' non lo tocchi
+    if (guardian == EnemyType::BlackShuck) boss.hostile = false; // si sveglia quando entri nel suo territorio
+    if (guardian == EnemyType::Cuco) boss.hidden = true;         // travestito da sacco
+
+    // Sfida "guardiano potenziato": il GM lo rende piu' forte (prima o poi succede di sicuro)
+    bool wantEmpowered = false;
+    for (int v : g.victoryPicks) wantEmpowered |= v == VC_EMPOWERED;
+    if (wantEmpowered && !g.empoweredSpawned && f >= 4 && (f >= 8 || GetRandomValue(0, 99) < 35)) {
+        Enemy& b = g.enemies.back();
+        b.empowered = true;
+        b.maxHp *= 2.5f;
+        b.hp = b.maxHp;
+        b.damage *= 1.4f;
+        g.empoweredSpawned = true;
+        g.ShowToast("Il GameMaster ha potenziato il guardiano di questo piano...");
+    }
+
+    // La Santa Compana passa di notte in Spagna: una processione di anime, meglio evitarla
+    if (country == Country::Spain) {
+        int room = takeRoom();
+        SpawnSwarm(g, EnemyType::Compana, room, 7);
+        for (int k = 0, order = 0; k < (int)g.enemies.size(); ++k)
+            if (g.enemies[k].type == EnemyType::Compana) g.enemies[k].slotAngle = (float)order++; // posto nella fila
+        g.swarms.back().patrolRoom = room;
+        g.ShowToast("Senti delle campane lontane? E' la Santa Compana: non metterti sul suo cammino");
+    }
 }
 
 void GameMaster::SpawnSwarm(Game& g, EnemyType type, int roomIndex, int size) {
@@ -59,6 +137,7 @@ void GameMaster::SpawnSwarm(Game& g, EnemyType type, int roomIndex, int size) {
         e.slotAngle = k * 2 * PI / size + Rand01() * 0.3f;
         // Le squadre di robot sono miste: due d'assalto ogni artigliere
         if (type == EnemyType::Robot) e.role = k % 3 == 2 ? RobotRole::Gunner : RobotRole::Assault;
+        if (type == EnemyType::Gnefro) e.hidden = true; // in agguato sotto le macerie
     }
 }
 

@@ -34,12 +34,12 @@ static const ButtonSpec BUTTONS[] = {
     { TB_MATCH,  L::Game, "BORSA",   Icon::None,  Corner::TopRight,    -150,   48, 36, false },
     { TB_PAUSE,  L::Game, "",        Icon::Pause, Corner::TopRight,     -60,   48, 36, false },
     // Nei menu: frecce a sinistra, OK e Indietro a destra
-    { TB_UP,     L::Menu, "", Icon::Up,    Corner::BottomLeft,  130, -215, 44, false },
-    { TB_DOWN,   L::Menu, "", Icon::Down,  Corner::BottomLeft,  130,  -75, 44, false },
-    { TB_LEFT,   L::Menu, "", Icon::Left,  Corner::BottomLeft,   60, -145, 44, false },
-    { TB_RIGHT,  L::Menu, "", Icon::Right, Corner::BottomLeft,  200, -145, 44, false },
-    { TB_OK,     L::Menu, "OK",       Icon::None, Corner::BottomRight, -115, -125, 60, false },
-    { TB_BACK,   L::Menu, "INDIETRO", Icon::None, Corner::BottomRight, -265,  -75, 46, false },
+    { TB_UP,     L::Menu, "", Icon::Up,    Corner::BottomLeft,  105, -180, 38, false },
+    { TB_DOWN,   L::Menu, "", Icon::Down,  Corner::BottomLeft,  105,  -56, 38, false },
+    { TB_LEFT,   L::Menu, "", Icon::Left,  Corner::BottomLeft,   43, -118, 38, false },
+    { TB_RIGHT,  L::Menu, "", Icon::Right, Corner::BottomLeft,  167, -118, 38, false },
+    { TB_OK,     L::Menu, "OK",       Icon::None, Corner::BottomRight, -95,  -105, 54, false },
+    { TB_BACK,   L::Menu, "INDIETRO", Icon::None, Corner::BottomRight, -225,  -56, 42, false },
     // Nelle animazioni si tocca ovunque per andare avanti; questo salta tutto
     { TB_SKIP,   L::Tap,  "SALTA",    Icon::None, Corner::TopRight,     -70,   56, 40, false },
 };

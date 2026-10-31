@@ -1,15 +1,16 @@
-// Menu di pausa: si apre con Esc (o P/Tab) e col tasto menu del joystick (START / Options / Menu).
+// Menu di gioco (pausa): si apre con Esc / P, col touchpad o Share del joystick, o col tasto pausa a schermo.
+#include <algorithm>
 #include <string>
 #include "Game.hpp"
 #include "Ui.hpp"
 
-enum { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_QUIT, PAUSE_COUNT };
+enum { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_SAVE_QUIT, PAUSE_QUIT, PAUSE_COUNT };
 
 // Nel browser (iPad) schermo intero e uscita li gestisce la pagina web: quelle voci non ci sono
 #if defined(__EMSCRIPTEN__)
-static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_NEW_RUN };
+static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_NEW_RUN, PAUSE_SAVE_QUIT };
 #else
-static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_QUIT };
+static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_SAVE_QUIT, PAUSE_QUIT };
 #endif
 constexpr int PAUSE_SHOWN = sizeof(PAUSE_ITEMS) / sizeof(PAUSE_ITEMS[0]);
 
@@ -56,80 +57,84 @@ void Game::UpdatePause() {
         case PAUSE_CONTROLS:   pauseShowControls = true; break;
         case PAUSE_FULLSCREEN: ToggleFullscreenMode(); break;
         case PAUSE_NEW_RUN:    NewRun(); break;
-        case PAUSE_QUIT:       quit = true; break;
+        case PAUSE_SAVE_QUIT:  if (pauseReturnState == State::GameOver) OpenTitle(); else SaveAndQuitToTitle(); break;
+        case PAUSE_QUIT:       if (pauseReturnState != State::GameOver) SaveRun(); quit = true; break;
     }
 }
 
-void Game::DrawPause() const {
-    const District& d = GetDistrict(floor);
+// La pagina "Comandi": tastiera, joystick e touch (usata anche dalle impostazioni del menu iniziale)
+void Game::DrawControlsPage() const {
     int sw = GetScreenWidth(), sh = GetScreenHeight();
+    DrawRectangle(0, 0, sw, sh, Fade(BLACK, 0.85f));
+    DrawTextCentered("Comandi", sw / 2, 30, 40, WHITE);
+    const bool pad = input.PadConnected();
+    DrawTextCentered(pad ? TextFormat("Joystick: %s", GetGamepadName(input.ConnectedPad()))
+                         : "Nessun joystick collegato: i nomi dei tasti sono quelli di un controller Xbox",
+                     sw / 2, 78, 18, LIGHTGRAY);
+    auto b = [&](int button) { return pad ? input.Btn(button) : Input::ButtonName(Input::PadFamily::Xbox, button); };
+
+    struct Row { const char* action; std::string keyboard; std::string joystick; std::string touch; };
+    const Row rows[] = {
+        { "Muoviti", "WASD / frecce su e giu'", "Stick sinistro", "Trascina a sinistra" },
+        { "Girati", "Mouse / frecce sx e dx", "Stick destro", "Trascina a destra" },
+        { "Attacca", "Click sinistro", std::string(b(GAMEPAD_BUTTON_RIGHT_TRIGGER_2)) + " o " + b(GAMEPAD_BUTTON_RIGHT_TRIGGER_1), "ATTACCA (tienilo)" },
+        { "Salta", "Spazio", b(GAMEPAD_BUTTON_RIGHT_FACE_DOWN), "SALTA" },
+        { "Scatto", "Shift", std::string("Frecce o ") + b(GAMEPAD_BUTTON_LEFT_TRIGGER_1), "SCATTO" },
+        { "Raccogli / torii", "E", b(GAMEPAD_BUTTON_RIGHT_FACE_LEFT), "PRENDI" },
+        { "Cambia arma", "Q / rotellina", b(GAMEPAD_BUTTON_RIGHT_FACE_UP), "ARMA" },
+        { "Menu di partita", "Tab / I", b(GAMEPAD_BUTTON_MIDDLE_RIGHT), "BORSA" },
+        { "Menu di gioco", "Esc / P",
+          pad && input.Family() == Input::PadFamily::PlayStation ? std::string("Touchpad o Share")
+                                                                 : std::string(b(GAMEPAD_BUTTON_MIDDLE_LEFT)),
+          "Tasto pausa" },
+        { "Schermo intero", "F11 / Alt+Invio", "dal menu", "dal browser" },
+    };
+    const int x0 = std::max(20, sw / 2 - 560), cw = std::min(280, (sw - 40) / 4);
+    int y = 120;
+    const char* heads[] = { "Azione", "Tastiera e mouse", "Joystick", "Touch (iPad)" };
+    for (int c = 0; c < 4; ++c) DrawText(heads[c], x0 + c * cw, y, 20, GOLD);
+    y += 34;
+    for (const Row& r : rows) {
+        DrawRectangle(x0 - 10, y - 6, cw * 4, 32, Fade({ 40, 40, 52, 255 }, 0.7f));
+        DrawText(r.action, x0, y, 17, WHITE);
+        DrawText(r.keyboard.c_str(), x0 + cw, y, 17, LIGHTGRAY);
+        DrawText(r.joystick.c_str(), x0 + cw * 2, y, 17, LIGHTGRAY);
+        DrawText(r.touch.c_str(), x0 + cw * 3, y, 17, LIGHTGRAY);
+        y += 37;
+    }
+    DrawTextCentered("Invio, Esc o B per tornare", sw / 2, sh - 40, 18, Fade(WHITE, 0.7f));
+}
+
+void Game::DrawPause() const {
+    const District& d = CurrentDistrict();
+    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    if (pauseShowControls) { DrawControlsPage(); return; }
     DrawRectangle(0, 0, sw, sh, Fade(BLACK, 0.8f));
 
-    if (pauseShowControls) {
-        DrawTextCentered("Comandi", sw / 2, 36, 40, WHITE);
-        const bool pad = input.PadConnected();
-        DrawTextCentered(pad ? TextFormat("Joystick: %s", GetGamepadName(input.ConnectedPad()))
-                             : "Nessun joystick collegato: i nomi dei tasti sono quelli di un controller Xbox",
-                         sw / 2, 86, 18, LIGHTGRAY);
-        auto b = [&](int button) { return pad ? input.Btn(button) : Input::ButtonName(Input::PadFamily::Xbox, button); };
-
-        struct Row { const char* action; std::string keyboard; std::string joystick; };
-        const Row rows[] = {
-            { "Muoviti", "WASD / frecce su e giu'", "Stick sinistro" },
-            { "Girati", "Mouse / frecce sx e dx", "Stick destro" },
-            { "Attacca", "Click sinistro", std::string(b(GAMEPAD_BUTTON_RIGHT_TRIGGER_2)) + " o " + b(GAMEPAD_BUTTON_RIGHT_TRIGGER_1) },
-            { "Salta", "Spazio", b(GAMEPAD_BUTTON_RIGHT_FACE_DOWN) },
-            { "Scatto", "Shift (dove ti muovi)", std::string("Frecce (nella loro direzione) o ") + b(GAMEPAD_BUTTON_LEFT_TRIGGER_1) },
-            { "Raccogli / attraversa il torii", "E", b(GAMEPAD_BUTTON_RIGHT_FACE_LEFT) },
-            { "Cambia arma", "Q / rotellina", b(GAMEPAD_BUTTON_RIGHT_FACE_UP) },
-            { "Menu di partita (inventario, mappa...)", "Tab / I", b(GAMEPAD_BUTTON_MIDDLE_RIGHT) },
-            { "Menu di gioco (questo)", "Esc / P",
-              pad && input.Family() == Input::PadFamily::PlayStation
-                  ? std::string("Touchpad, Share o PS")
-                  : std::string(b(GAMEPAD_BUTTON_MIDDLE_LEFT)) + " o " + b(GAMEPAD_BUTTON_MIDDLE) },
-            { "Menu controller", "F1", "dal menu di gioco" },
-            { "Schermo intero / finestra", "F11 / Alt+Invio", "dal menu di gioco" },
-        };
-        const int x0 = 140, x1 = 520, x2 = 820;
-        int y = 140;
-        DrawText("Azione", x0, y, 20, GOLD);
-        DrawText("Tastiera e mouse", x1, y, 20, GOLD);
-        DrawText("Joystick", x2, y, 20, GOLD);
-        y += 36;
-        for (const Row& r : rows) {
-            DrawRectangle(x0 - 12, y - 6, x2 + 330 - x0, 34, Fade({ 40, 40, 52, 255 }, 0.7f));
-            DrawText(r.action, x0, y, 18, WHITE);
-            DrawText(r.keyboard.c_str(), x1, y, 18, LIGHTGRAY);
-            DrawText(r.joystick.c_str(), x2, y, 18, LIGHTGRAY);
-            y += 40;
-        }
-        DrawTextCentered("Invio, Esc o B per tornare", sw / 2, sh - 50, 18, Fade(WHITE, 0.7f));
-        return;
-    }
-
-    DrawTextCentered("Pausa", sw / 2, 60, 48, WHITE);
-    DrawTextCentered(TextFormat("Piano %d - %s: %s", floor, d.city, d.place), sw / 2, 118, 20, d.accent);
+    DrawTextCentered("Pausa", sw / 2, 50, 48, WHITE);
+    DrawTextCentered(TextFormat("Piano %d - %s: %s", floor, d.city, d.place), sw / 2, 104, 20, d.accent);
 
     struct Item { const char* label; const char* desc; };
     const Item items[PAUSE_COUNT] = {
         { "Riprendi", nullptr },
         { "Controller e joystick", "Collega un joystick (Bluetooth, cavo, pennetta) e prova i tasti" },
-        { "Comandi", "Tutti i tasti, con i nomi del tuo joystick" },
+        { "Comandi", "Tutti i tasti: tastiera, joystick e touch" },
         { "Schermo intero", "In qualsiasi momento anche con F11 o Alt+Invio" },
-        { "Nuova run", "Ricomincia dal primo piano" },
+        { "Ricomincia la run", "Si riparte dal primo piano, con un nuovo giro del mondo" },
+        { "Salva e torna al menu", nullptr },
         { "Esci dal gioco", nullptr },
     };
     const bool full = IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
     const float w = 560, x = (sw - w) / 2;
-    float y = 160;
+    float y = 140;
     for (int k = 0; k < PAUSE_SHOWN; ++k) {
         const int i = PAUSE_ITEMS[k];
-        float h = items[i].desc ? 70.0f : 52.0f;
+        float h = items[i].desc ? 66.0f : 48.0f;
         const char* status = i == PAUSE_FULLSCREEN ? (full ? "SI" : "NO") : "";
         DrawMenuItem({ x, y, w, h }, items[i].label, k == pauseIndex, true, status, full ? GREEN : GRAY, items[i].desc);
-        y += h + 8;
+        y += h + 7;
     }
     if (!input.UsingTouch())
         DrawTextCentered("Su/Giu scegli  |  Invio o A conferma  |  Esc, B o touchpad riprende",
-                         sw / 2, sh - 50, 18, Fade(WHITE, 0.7f));
+                         sw / 2, sh - 34, 18, Fade(WHITE, 0.7f));
 }

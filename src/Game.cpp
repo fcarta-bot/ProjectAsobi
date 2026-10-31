@@ -20,17 +20,6 @@ constexpr float PLAYER_SHOT_H = 0.45f; // altezza dei colpi sopra i piedi
 constexpr float EXPLOSION_RADIUS = 56; // pixel
 constexpr float SWING_TIME = 0.22f;
 
-// Altezza del centro del corpo di un nemico (il tengu vola)
-static float EnemyBodyY(const Enemy& e) {
-    float r = e.radius / TILE;
-    if (e.type == EnemyType::Tengu) return 0.55f + 0.05f * sinf((float)GetTime() * 3 + e.id);
-    if (e.type == EnemyType::Oni) return r * 1.05f;
-    if (e.type == EnemyType::Robot) return r * 1.2f;
-    // Il goblin si alza sulle zampe mentre carica il morso
-    if (e.type == EnemyType::Goblin && e.windup > 0) return r * 1.35f;
-    return r;
-}
-
 static Vector2 RandomPointInRoom(const Room& r) {
     return { GetRandomValue(r.x + 1, r.x + r.w - 2) * (float)TILE + TILE / 2.0f,
              GetRandomValue(r.y + 1, r.y + r.h - 2) * (float)TILE + TILE / 2.0f };
@@ -75,17 +64,18 @@ Game::Game() {
     camera.fovy = BASE_FOV;
     camera.projection = CAMERA_PERSPECTIVE;
     link = ControllerLink::Create();
+    LoadProfile();
+    // All'avvio: il menu iniziale, col GameMaster che scende sulla terra e si apposta alla finestra
     NewRun();
-    // All'avvio si parte dalla storia: il GameMaster scende nei sogni del malcapitato
-    state = State::Intro;
-    cutsceneTime = 0;
+    OpenTitle();
 }
 
 void Game::UpdateIntro(float dt) {
     cutsceneTime += dt;
-    if (input.BackPressed() || input.GameMenuPressed()) cutsceneTime = Intro::END;     // salta tutto
-    else if (input.ConfirmPressed()) cutsceneTime = Intro::NextStop(cutsceneTime);    // avanti
-    if (cutsceneTime >= Intro::END) {
+    const float end = introNewRun ? Intro::END : Intro::LOAD_END;
+    if (input.BackPressed() || input.GameMenuPressed()) cutsceneTime = end;                 // salta tutto
+    else if (input.ConfirmPressed()) cutsceneTime = std::min(end, Intro::NextStop(cutsceneTime)); // avanti
+    if (cutsceneTime >= end) {
         state = State::Playing;
         introTimer = 3.5f; // il nome del distretto compare ora, non sotto l'intro
         floorTime = lostTimer = 0;
@@ -104,27 +94,47 @@ void Game::NewRun() {
     stats = ComputeStats(inventory);
     player = Player{};
     player.hp = stats.maxHp;
+    curses.clear();
+    fear = 0;
+    tourSeed = (unsigned)GetRandomValue(0, 1 << 30);
+    tour = MakeWorldTour(tourSeed, MAX_FLOORS);
+    ResetChallenges();
+    PickVictoryChallenges();
     state = State::Playing;
     NextFloor();
 }
 
 void Game::NextFloor() {
+    if (floor > 0) {
+        OnFloorLeft();
+        player.hp = std::min(stats.maxHp, player.hp + stats.maxHp * 0.25f); // un po' di riposo tra un piano e l'altro
+    }
     floor++;
-    dungeon.Generate(64, 48, (unsigned)GetRandomValue(0, 1000000));
+    BuildFloor((unsigned)GetRandomValue(0, 1000000));
+    SaveRun(); // salvataggio automatico all'inizio di ogni piano
+}
+
+void Game::BuildFloor(unsigned seed) {
+    floorSeed = seed;
+    dungeon.Generate(64, 48, seed);
     enemies.clear();
     swarms.clear();
+    corpses.clear();
     projectiles.clear();
     pickups.clear();
     texts.clear();
     explosions.clear();
+    floorDamageStart = damageTaken;
+    districtsSeen |= 1u << (int)CurrentDistrict().id;
+    countriesSeen |= 1u << (int)CurrentDistrict().country;
+    if (runActive) profile.bestFloor = std::max(profile.bestFloor, floor); // la run "di sfondo" del menu non conta
 
     player.pos = dungeon.Rooms()[0].Center();
     player.z = player.vz = 0;
     player.onGround = true;
     player.yaw = 0; // si parte guardando gli altari accanto alla partenza
     player.aim = { 1, 0 };
-    if (floor > 1) player.hp = std::min(stats.maxHp, player.hp + stats.maxHp * 0.25f);
-    props.Generate(dungeon, GetDistrict(floor), player.pos);
+    props.Generate(dungeon, CurrentDistrict(), player.pos);
     nav.Build(dungeon, props);
     prevPlayerPos = player.pos;
     playerVel = { 0, 0 };
@@ -180,6 +190,15 @@ void Game::SpawnFloorContent() {
     // Un'arma nascosta in una stanza a caso
     const Room& r = rooms[GetRandomValue(1, (int)rooms.size() - 1)];
     pickups.push_back({ FreeSpotInRoom(r, 12), -1, RandomWeapon() });
+
+    // Contro la Bestia del Gevaudan serve l'argento: se non ce l'hai, il GM te ne lascia uno in giro
+    bool bestia = std::any_of(enemies.begin(), enemies.end(), [](const Enemy& e) { return e.type == EnemyType::Gevaudan; });
+    bool silver = false;
+    for (int w : player.weapons) silver |= w >= 0 && AllWeapons()[w].silver;
+    if (bestia && !silver) {
+        const Room& sr = rooms[GetRandomValue(1, (int)rooms.size() - 1)];
+        pickups.push_back({ FreeSpotInRoom(sr, 12), -1, W_CHASTEL });
+    }
 }
 
 // Il riferimento restituito vale solo finche' non si aggiunge un altro nemico
@@ -190,17 +209,18 @@ Enemy& Game::SpawnEnemy(EnemyType type, Vector2 pos) {
     e.pos = e.home = e.lastPos = pos;
     float a = Rand01() * 2 * PI;
     e.facing = { cosf(a), sinf(a) };
-    switch (type) {
-        case EnemyType::Goblin: e.radius = 9;  e.maxHp = 16;  e.speed = 165; e.damage = 6;  break;
-        case EnemyType::Robot:  e.radius = 12; e.maxHp = 45;  e.speed = 120; e.damage = 12; break;
-        case EnemyType::Tengu:  e.radius = 13; e.maxHp = 30;  e.speed = 125; e.damage = 12; break;
-        case EnemyType::Oni:    e.radius = 22; e.maxHp = 420; e.speed = 90;  e.damage = 24; break;
-    }
+    const EnemyInfo& info = InfoOf(type);
+    e.radius = info.radius;
+    e.maxHp = info.hp;
+    e.speed = info.speed;
+    e.damage = info.damage;
+    if (type == EnemyType::Mothman) e.z = 1.2f; // vola alto
     // I piani successivi sono piu' difficili
     e.maxHp *= 1.0f + 0.3f * (floor - 1);
     e.damage *= 1.0f + 0.15f * (floor - 1);
     e.hp = e.maxHp;
     e.baseRadius = e.radius;
+    if (type == EnemyType::Babau) { e.power = e.damage; e.hidden = true; } // power = danno di base, cresce con la paura
     e.shootTimer = 1.0f + Rand01();
     e.thinkTimer = Rand01() * 0.2f; // non pensano tutti nello stesso frame
     e.strafeSign = GetRandomValue(0, 1) ? 1.0f : -1.0f;
@@ -212,7 +232,7 @@ Enemy& Game::SpawnEnemy(EnemyType type, Vector2 pos) {
 int Game::RandomArtifact() const {
     int id = 0;
     for (int tries = 0; tries < 10; ++tries) {
-        id = GetRandomValue(0, A_COUNT - 1);
+        id = GetRandomValue(0, A_FIRST_RARE - 1); // i rari solo come premio delle sfide
         bool owned = std::find(inventory.begin(), inventory.end(), id) != inventory.end();
         bool onGround = std::any_of(pickups.begin(), pickups.end(),
                                     [id](const Pickup& p) { return p.artifactId == id && p.weaponId < 0 && !p.taken; });
@@ -221,11 +241,14 @@ int Game::RandomArtifact() const {
     return id;
 }
 
-// Un'arma diversa da quelle che hai e da quelle gia' a terra (gli ofuda li hai gia' dall'inizio)
+// Un'arma diversa da quelle che hai e da quelle gia' a terra (gli ofuda li hai gia' dall'inizio).
+// Di solito e' un'arma tipica del paese in cui ti trovi; le leggendarie solo come premio delle sfide
 int Game::RandomWeapon() const {
     int id = W_KATANA;
-    for (int tries = 0; tries < 12; ++tries) {
-        id = GetRandomValue(W_KATANA, W_COUNT - 1);
+    const Country here = CurrentDistrict().country;
+    for (int tries = 0; tries < 16; ++tries) {
+        id = GetRandomValue(W_KATANA, W_FIRST_LEGENDARY - 1);
+        if (tries < 10 && AllWeapons()[id].country != here && GetRandomValue(0, 99) < 70) continue;
         bool owned = player.weapons[0] == id || player.weapons[1] == id;
         bool onGround = std::any_of(pickups.begin(), pickups.end(),
                                     [id](const Pickup& p) { return p.weaponId == id && !p.taken; });
@@ -237,6 +260,7 @@ int Game::RandomWeapon() const {
 void Game::RecomputeStats() {
     float oldMax = stats.maxHp;
     stats = ComputeStats(inventory);
+    bestSynergies = std::max(bestSynergies, (int)ActiveSynergies(inventory).size());
     if (stats.maxHp > oldMax) player.hp += stats.maxHp - oldMax;
     player.hp = std::min(player.hp, stats.maxHp);
 }
@@ -249,11 +273,13 @@ void Game::Update(float dt) {
     dt = std::min(dt, 0.05f); // evita salti enormi se il gioco si blocca un attimo
     // Quali tasti a schermo mostrare (touch): in partita, nelle animazioni o nei menu
     input.SetTouchLayout(state == State::Playing ? TouchControls::Layout::Game
-                         : state == State::Intro || state == State::GameOver ? TouchControls::Layout::Tap
+                         : state == State::Intro || state == State::GameOver || state == State::Victory ||
+                           (state == State::Title && titleTime < TitleScene::MENU) ? TouchControls::Layout::Tap
                                                                             : TouchControls::Layout::Menu);
     input.Update();
     link->Update();
     toastTimer -= dt;
+    bannerTimer -= dt;
     hurtTimer -= dt;
     swingTimer -= dt;
     recoil = std::max(0.0f, recoil - dt * 6);
@@ -282,6 +308,14 @@ void Game::Update(float dt) {
     }
     if (state == State::ControllerMenu) {
         UpdateControllerMenu();
+        return;
+    }
+    if (state == State::Title) {
+        UpdateTitle(dt);
+        return;
+    }
+    if (state == State::Victory) {
+        UpdateVictory(dt);
         return;
     }
     if (state == State::Intro) {
@@ -313,9 +347,11 @@ void Game::Update(float dt) {
         deathTime += dt;
         if (deathTime < WakeUp::END) {
             if (input.ConfirmPressed() || input.BackPressed()) deathTime = WakeUp::END;
-        } else if (IsKeyPressed(KEY_R) || input.ConfirmPressed()) {
+        } else if (IsKeyPressed(KEY_R)) { // subito un'altra run, nello stesso salvataggio
             NewRun();
             fadeFromBlack = 1.0f;
+        } else if (input.ConfirmPressed()) {
+            OpenTitle();
         }
         return;
     }
@@ -341,7 +377,13 @@ void Game::Update(float dt) {
     UpdateEnemies(dt);
     UpdateProjectiles(dt);
     UpdatePickups();
-    UpdateTutorials(dt);
+    UpdateFear(dt);
+    UpdateCurses(dt);
+    for (auto& c : corpses) c.life -= dt;
+    corpses.erase(std::remove_if(corpses.begin(), corpses.end(), [](const Corpse& c) { return c.life <= 0; }), corpses.end());
+    if (state != State::Playing) return;
+    UpdateChallenges(dt);
+    if (profile.tips) UpdateTutorials(dt);
     for (auto& t : texts) {
         t.life -= dt;
         t.height += 0.6f * dt;
@@ -352,8 +394,8 @@ void Game::Update(float dt) {
 void Game::UpdatePlayer(float dt) {
     // Girarsi: mouse (catturato) oppure stick destro / frecce
     float turn = input.TurnAxis() * TURN_SPEED * dt;
-    if (cursorLocked && !skipMouseDelta) turn += GetMouseDelta().x * MOUSE_TURN;
-    turn += input.TouchLook() * TOUCH_TURN;
+    if (cursorLocked && !skipMouseDelta) turn += GetMouseDelta().x * MOUSE_TURN * profile.lookSensitivity;
+    turn += input.TouchLook() * TOUCH_TURN * profile.lookSensitivity;
     skipMouseDelta = false;
     player.yaw = fmodf(player.yaw + turn, 2 * PI);
     player.aim = { cosf(player.yaw), sinf(player.yaw) };
@@ -436,6 +478,10 @@ void Game::UpdatePlayer(float dt) {
         AddPlayerText(AllWeapons()[player.Weapon()].name, WHITE);
     }
 
+    // Fermo e zitto? Per el Cuco sei invisibile (ti trova solo dal rumore)
+    bool noisy = moving || player.dashTimer > 0 || input.FireDown() || !player.onGround;
+    quietTime = noisy ? 0 : quietTime + dt;
+
     if (input.FireDown() && player.shootTimer <= 0) Attack();
 
     // E / Quadrato: prendi l'arma o l'artefatto vicino, oppure attraversa il torii
@@ -464,11 +510,25 @@ void Game::Attack() {
     threatTime = 0;
     if (w.melee) {
         MeleeSwing(w);
+        if (w.shot != ShotLook::Wave) return;
+        // La Kusanagi lancia anche un'onda di vento che passa attraverso tutti i nemici
+        Projectile p;
+        p.pos = Vector2Add(player.pos, Vector2Scale(player.aim, player.radius));
+        p.vel = Vector2Scale(player.aim, 520);
+        p.height = player.z + PLAYER_SHOT_H;
+        p.damage = stats.damage * w.damageMult * 0.6f;
+        p.radius = 12;
+        p.life = 0.7f;
+        p.pierceLeft = 99;
+        p.melee = true;
+        p.weapon = player.Weapon();
+        projectiles.push_back(p);
         return;
     }
     // Si spara dove si guarda (il mirino e' al centro dello schermo)
-    for (int i = 0; i < stats.projectiles; ++i) {
-        float a = player.yaw + (i - (stats.projectiles - 1) / 2.0f) * w.spread + (Rand01() * 2 - 1) * w.jitter;
+    const int shots = stats.projectiles + w.pellets;
+    for (int i = 0; i < shots; ++i) {
+        float a = player.yaw + (i - (shots - 1) / 2.0f) * w.spread + (Rand01() * 2 - 1) * w.jitter;
         Projectile p;
         p.pos = Vector2Add(player.pos, Vector2Scale(player.aim, player.radius * 0.5f));
         p.vel = { cosf(a) * stats.projSpeed * w.speedMult, sinf(a) * stats.projSpeed * w.speedMult };
@@ -480,6 +540,8 @@ void Game::Attack() {
         p.pierceLeft = stats.pierce + w.extraPierce;
         p.bouncesLeft = w.bounces;
         p.explosive = w.explosive;
+        p.incendiary = w.incendiary;
+        p.silver = w.silver;
         p.weapon = player.Weapon();
         projectiles.push_back(p);
     }
@@ -497,30 +559,49 @@ void Game::MeleeSwing(const Weapon& w) {
         return len < player.radius + extra || Vector2DotProduct(to, player.aim) / len >= cosArc;
     };
 
+    const int id = player.Weapon();
+    int hits = 0;
     for (auto& e : enemies) {
-        if (!e.alive || !inFront(e.pos, e.radius) || !dungeon.HasLineOfSight(player.pos, e.pos)) continue;
+        if (!e.alive || !Damageable(e) || !inFront(e.pos, e.radius)) continue;
+        if (EnemyBodyY(e) - player.z > 1.4f) continue;                         // vola troppo in alto
+        if (id != W_BALMUNG && !dungeon.HasLineOfSight(player.pos, e.pos)) continue; // Balmung taglia anche i muri
         bool crit = Rand01() < stats.critChance;
-        DamageEnemy(e, stats.damage * w.damageMult * (crit ? stats.critMult : 1.0f), crit);
-        Vector2 push = Vector2Scale(Vector2Normalize(Vector2Subtract(e.pos, player.pos)), 18);
+        DamageEnemy(e, stats.damage * w.damageMult * (crit ? stats.critMult : 1.0f), crit, w.silver, false, true);
+        Vector2 push = Vector2Scale(Vector2Normalize(Vector2Subtract(e.pos, player.pos)), w.knockback);
         MoveWithCollision(e.pos, e.radius, push);
+        if (w.stun > 0 && !InfoOf(e.type).boss) e.stun = std::max(e.stun, w.stun);
+        else if (w.stun > 0) e.stun = std::max(e.stun, w.stun * 0.3f); // i guardiani resistono
+        hits++;
     }
+    if (id == W_EXCALIBUR && hits > 0) player.hp = std::min(stats.maxHp, player.hp + 2.0f * hits);
+    if (id == W_JOHN_HENRY) // il martello fa tremare la terra davanti a te
+        Explode(Vector2Add(player.pos, Vector2Scale(player.aim, 50)), 0.1f, stats.damage * w.damageMult * 0.5f, false);
     int parried = 0;
     for (auto& p : projectiles) {
-        if (p.alive && !p.fromPlayer && inFront(p.pos, p.radius)) {
+        if (!p.alive || p.fromPlayer || !inFront(p.pos, p.radius)) continue;
+        ++parried;
+        if (w.reflect) { // la mazza da cricket (e Durlindana) rimandano il colpo da dove e' venuto
+            p.fromPlayer = true;
+            p.vel = Vector2Scale(p.vel, -1.3f);
+            p.damage *= 2;
+            p.life = 2;
+            p.weapon = W_PACHINKO;
+        } else {
             p.alive = false;
-            ++parried;
         }
     }
-    if (parried) AddPlayerText("Parato!", SKYBLUE);
+    if (parried) AddPlayerText(w.reflect ? "Rispedito!" : "Parato!", SKYBLUE);
 }
 
-// Esplosione dei razzi: danno ad area, e incendia cio' che puo' bruciare (solo quello)
-void Game::Explode(Vector2 pos, float height, float damage) {
-    explosions.push_back({ To3D(pos, height), 0, (unsigned)GetRandomValue(0, 1 << 30) });
+// Esplosione: danno ad area. Quella dei fuochi incendia cio' che puo' bruciare (solo quello),
+// quella della schiuma (birra, champagne) no
+void Game::Explode(Vector2 pos, float height, float damage, bool incendiary) {
+    explosions.push_back({ To3D(pos, height), 0, (unsigned)GetRandomValue(0, 1 << 30), !incendiary });
     for (auto& e : enemies) {
-        if (e.alive && Vector2Distance(e.pos, pos) < EXPLOSION_RADIUS + e.radius) DamageEnemy(e, damage * 0.8f, false);
+        if (e.alive && Damageable(e) && Vector2Distance(e.pos, pos) < EXPLOSION_RADIUS + e.radius)
+            DamageEnemy(e, damage * 0.8f, false, false, incendiary);
     }
-    if (props.Ignite(pos, 40) > 0) AddText(pos, "Prende fuoco!", ORANGE);
+    if (incendiary && props.Ignite(pos, 40) > 0) AddText(pos, "Prende fuoco!", ORANGE);
 }
 
 void Game::UpdateProjectiles(float dt) {
@@ -540,29 +621,31 @@ void Game::UpdateProjectiles(float dt) {
                 p.bouncesLeft--;
                 continue;
             }
-            if (p.explosive) Explode(p.pos, p.height, p.damage);
+            if (p.explosive) Explode(p.pos, p.height, p.damage, p.incendiary);
             p.alive = false;
             continue;
         }
         p.pos = next;
         if (p.life <= 0) {
-            if (p.explosive) Explode(p.pos, p.height, p.damage);
+            if (p.explosive) Explode(p.pos, p.height, p.damage, p.incendiary);
             p.alive = false;
             continue;
         }
 
         if (p.fromPlayer) {
             for (auto& e : enemies) {
-                if (!e.alive) continue;
+                if (!e.alive || !Damageable(e)) continue;
                 if (std::find(p.hitIds.begin(), p.hitIds.end(), e.id) != p.hitIds.end()) continue;
                 if (!CheckCollisionCircles(p.pos, p.radius, e.pos, e.radius)) continue;
+                // Chi vola o salta alto non lo prendi con un colpo basso (salta anche tu!)
+                if (fabsf(p.height - EnemyBodyY(e)) > e.radius / TILE + 0.55f) continue;
                 if (p.explosive) {
-                    DamageEnemy(e, p.damage, p.crit);
-                    Explode(p.pos, p.height, p.damage);
+                    DamageEnemy(e, p.damage, p.crit, p.silver, p.incendiary);
+                    Explode(p.pos, p.height, p.damage, p.incendiary);
                     p.alive = false;
                     break;
                 }
-                DamageEnemy(e, p.damage, p.crit);
+                DamageEnemy(e, p.damage, p.crit, p.silver, false, p.melee);
                 p.hitIds.push_back(e.id);
                 if (--p.pierceLeft < 0) { p.alive = false; break; }
             }
@@ -579,6 +662,7 @@ void Game::UpdatePickups() {
         if (p.taken || p.artifactId >= 0 || p.weaponId >= 0) continue;
         if (Vector2Distance(p.pos, player.pos) < player.radius + 10 && player.z < 0.6f) {
             player.hp = std::min(stats.maxHp, player.hp + 20);
+            fear = std::max(0.0f, fear - 0.15f); // un po' di coraggio
             AddPlayerText("+20", GREEN);
             p.taken = true;
         }
@@ -633,6 +717,7 @@ void Game::TakeWeapon(int index) {
     }
     player.shootTimer = std::max(player.shootTimer, 0.3f);
     AddPlayerText(std::string("Arma: ") + AllWeapons()[id].name, GOLD);
+    OnWeaponTaken(id);
 }
 
 // Righe: 0..inventario-1 = scarta quell'artefatto, ultima = lascia a terra il nuovo
@@ -665,8 +750,33 @@ void Game::ShowToast(const std::string& text) {
     toastTimer = 3.0f;
 }
 
-void Game::DamageEnemy(Enemy& e, float dmg, bool crit) {
-    if (!e.alive) return;
+void Game::DamageEnemy(Enemy& e, float dmg, bool crit, bool silver, bool fire, bool melee) {
+    if (!e.alive || !Damageable(e)) return;
+    // Chi era nascosto, neutrale o travestito si arrabbia (o salta fuori)
+    e.hostile = true;
+    if (e.type == EnemyType::BlackShuck) e.special = 1;
+    if (e.hidden && e.type != EnemyType::Babau) e.hidden = false;
+    if (e.type == EnemyType::Badalisc && !e.aggro) AddText(e.pos, "Il Badalisc si offende!", ORANGE);
+    // La Bestia del Gevaudan: solo l'argento e il fuoco la feriscono
+    if (e.type == EnemyType::Gevaudan && !silver && !fire) {
+        e.aggro = true;
+        e.lastSeen = player.pos;
+        if (stats.burnDps > 0) { // i colpi infuocati invece la bruciano
+            e.burnTimer = 3.0f;
+            e.burnDps = std::max(e.burnDps, stats.burnDps);
+        }
+        if (e.hitFlash < -1) {
+            AddText(e.pos, "Immune!", LIGHTGRAY);
+            e.hitFlash = 0;
+        }
+        static bool hinted = false;
+        if (!hinted) {
+            ShowToast("Le armi normali non la scalfiscono: serve l'argento... o il fuoco");
+            hinted = true;
+        }
+        return;
+    }
+    e.lastHitMelee = melee;
     damageDealt += std::min(dmg, std::max(0.0f, e.hp)); // conta solo il danno che toglie davvero vita
     e.hp -= dmg;
     e.hitFlash = 0.08f;
@@ -688,9 +798,19 @@ void Game::KillEnemy(Enemy& e) {
     e.alive = false;
     kills++;
     killsByType[(int)e.type]++;
-    if (e.type == EnemyType::Oni) {
-        // Il boss lascia sempre un artefatto, spesso un secondo artefatto e un'arma, e qualche cuore
-        AddText(e.pos, "Oni sconfitto!", GOLD);
+    corpses.push_back({ e.pos, 30 }); // il wendigo se ne nutre
+    OnEnemyKilled(e);
+    if (e.type == EnemyType::Matagot) {
+        // La ricchezza del gatto-spirito... e il prezzo del patto di sangue
+        pickups.push_back({ e.pos, RandomArtifact() });
+        pickups.push_back({ Vector2Add(e.pos, { 14, 8 }), RandomArtifact() });
+        DrainPlayer(std::min(15.0f, player.hp - 1));
+        AddPlayerText("Patto di sangue: -15 vita", { 200, 30, 50, 255 });
+        return;
+    }
+    if (InfoOf(e.type).boss) {
+        // Il guardiano lascia sempre un artefatto, spesso un secondo artefatto e un'arma, e qualche cuore
+        AddText(e.pos, std::string(InfoOf(e.type).name) + " sconfitto!", GOLD);
         pickups.push_back({ e.pos, RandomArtifact() });
         if (Rand01() < 0.25f + stats.dropChance) pickups.push_back({ Vector2Add(e.pos, { 16, 10 }), RandomArtifact() });
         if (Rand01() < 0.6f) pickups.push_back({ Vector2Add(e.pos, { -16, 10 }), -1, RandomWeapon() });
@@ -705,20 +825,36 @@ void Game::KillEnemy(Enemy& e) {
     else if (Rand01() < 0.12f * luck) pickups.push_back({ e.pos, -1 });
 }
 
-void Game::DamagePlayer(float dmg) {
-    if (player.invuln > 0 || state != State::Playing) return;
+bool Game::DamagePlayer(float dmg) {
+    if (player.invuln > 0 || state != State::Playing) return false;
+    if (HasCurse(CurseType::Omen)) dmg *= 1.5f; // il presagio del Mothman
     damageTaken += std::min(dmg, player.hp);
     if (!usedDash) hitsWithoutDash++;
     player.hp -= dmg;
     player.invuln = 0.6f;
     hurtTimer = 0.4f;
+    if (fearFloor) fear = std::min(1.0f, fear + 0.07f);
     AddPlayerText(TextFormat("-%d", (int)dmg), RED);
-    if (player.hp <= 0) {
-        player.hp = 0;
-        state = State::GameOver;
-        deathTime = 0; // parte l'animazione del risveglio
-        activeTip = -1;
-    }
+    if (player.hp <= 0) Die();
+    return true;
+}
+
+void Game::DrainPlayer(float amount) {
+    if (state != State::Playing || amount <= 0) return;
+    damageTaken += std::min(amount, player.hp);
+    player.hp -= amount;
+    if (player.hp <= 0) Die();
+}
+
+// Si muore nel sogno: ci si sveglia. La run e' finita, il salvataggio si cancella
+void Game::Die() {
+    player.hp = 0;
+    state = State::GameOver;
+    deathTime = 0; // parte l'animazione del risveglio
+    activeTip = -1;
+    curses.clear();
+    DeleteRun(slot);
+    SaveProfile();
 }
 
 bool Game::CircleHitsWall(Vector2 p, float r) const {
@@ -759,15 +895,30 @@ void Game::AddPlayerText(const std::string& text, Color color) {
 // ---------------------------------------------------------------------------
 
 void Game::Draw() {
+    bool overTitle = state == State::ControllerMenu && menuReturnState == State::Title;
+    if (state == State::Title || overTitle) {
+        ClearBackground(BLACK);
+        DrawTitle();
+        if (overTitle) DrawControllerMenu();
+        input.DrawTouch();
+        DrawToast();
+        return;
+    }
+    if (state == State::Victory) {
+        ClearBackground(BLACK);
+        DrawVictory();
+        input.DrawTouch();
+        return;
+    }
     if (state == State::Intro || (state == State::ControllerMenu && menuReturnState == State::Intro)) {
         ClearBackground(BLACK);
-        DrawIntro(cutsceneTime);
+        DrawIntro(cutsceneTime, introNewRun);
         if (state == State::ControllerMenu) DrawControllerMenu();
         input.DrawTouch();
         DrawToast();
         return;
     }
-    const District& d = GetDistrict(floor);
+    const District& d = CurrentDistrict();
     ClearBackground(d.horizon);
     DrawSky(d, player.yaw, camera.fovy);
 
@@ -782,6 +933,7 @@ void Game::Draw() {
     DrawTutorial();
     if (fadeFromBlack > 0) DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, fadeFromBlack));
     DrawBossBar();
+    DrawChallengeBanner();
     if (state == State::InventoryFull) DrawInventoryChoice();
     if (state == State::GameOver) DrawGameOver();
     if (state == State::Paused) DrawPause();
@@ -792,7 +944,7 @@ void Game::Draw() {
 }
 
 void Game::DrawWorld() const {
-    const District& d = GetDistrict(floor);
+    const District& d = CurrentDistrict();
     dungeon.Draw3D(d, camera.position, player.aim);
     props.Draw(d, camera.position, player.aim);
 
@@ -850,6 +1002,18 @@ void Game::DrawWorld() const {
                 case EnemyShot::Rock: // masso lanciato dall'oni
                     DrawSphereEx(c, p.radius / TILE, 7, 7, { 120, 105, 95, 255 });
                     break;
+                case EnemyShot::Spirit: // sfera spiritica del matagot
+                    DrawSphereEx(c, p.radius / TILE, 6, 6, { 120, 255, 140, 255 });
+                    DrawSphereEx(c, p.radius / TILE * 0.5f, 4, 4, WHITE);
+                    break;
+                case EnemyShot::BlueFire: // fiamma blu di Spring-heeled Jack
+                    DrawSphereEx(c, p.radius / TILE * (0.9f + 0.2f * sinf(t * 30)), 5, 5, { 80, 140, 255, 255 });
+                    DrawSphereEx(c, p.radius / TILE * 0.5f, 4, 4, { 200, 230, 255, 255 });
+                    break;
+                case EnemyShot::Gossip: // i pettegolezzi del Badalisc: nuvolette di chiacchiere
+                    DrawSphereEx(c, p.radius / TILE, 5, 5, { 240, 230, 180, 255 });
+                    DrawSphereEx(Vector3Add(c, { 0.05f, 0.04f, 0 }), p.radius / TILE * 0.6f, 4, 4, { 250, 245, 220, 255 });
+                    break;
                 default: // sfera di vento del tengu
                     DrawSphereEx(c, p.radius / TILE, 6, 6, { 170, 80, 255, 255 });
                     DrawSphereEx(c, p.radius / TILE * 0.55f, 4, 4, { 230, 200, 255, 255 });
@@ -857,15 +1021,44 @@ void Game::DrawWorld() const {
             }
             continue;
         }
-        switch (p.weapon) {
-            case W_YUMI: // freccia: asta e punta
-                DrawCylinderEx(Vector3Subtract(c, Vector3Scale(dir, 0.35f)), c, 0.012f, 0.012f, 4, { 140, 96, 56, 255 });
+        const Weapon& w = AllWeapons()[p.weapon];
+        switch (w.shot) {
+            case ShotLook::Arrow: // freccia o dardo: asta e punta
+                DrawCylinderEx(Vector3Subtract(c, Vector3Scale(dir, 0.35f)), c, 0.012f, 0.012f, 4, w.shape == WeaponShape::Banderilla ? w.color : Color{ 140, 96, 56, 255 });
                 DrawCylinderEx(c, Vector3Add(c, Vector3Scale(dir, 0.08f)), 0.03f, 0.0f, 4, { 190, 195, 205, 255 });
                 break;
-            case W_PACHINKO:
-                DrawSphereEx(c, p.radius / TILE, 6, 6, p.crit ? GOLD : Color{ 205, 210, 220, 255 });
+            case ShotLook::Ball:
+                DrawSphereEx(c, p.radius / TILE, 6, 6, p.crit ? GOLD : w.color);
                 break;
-            case W_TAMAYA: // razzo con la scia di scintille
+            case ShotLook::Bullet:
+                DrawCylinderEx(Vector3Subtract(c, Vector3Scale(dir, 0.12f)), c, 0.012f, 0.02f, 4, p.silver ? Color{ 230, 235, 250, 255 } : Color{ 255, 220, 140, 255 });
+                break;
+            case ShotLook::Axe: { // tomahawk che gira su se stesso
+                float spin = t * 20;
+                Vector3 s{ cosf(spin) * 0.15f, sinf(spin) * 0.15f, 0 };
+                DrawCylinderEx(Vector3Subtract(c, s), Vector3Add(c, s), 0.015f, 0.015f, 4, w.color2);
+                DrawSphereEx(Vector3Add(c, s), 0.05f, 4, 4, w.color);
+                break;
+            }
+            case ShotLook::Cork:
+                DrawCylinderEx(c, Vector3Add(c, Vector3Scale(dir, 0.08f)), 0.035f, 0.03f, 6, { 200, 170, 110, 255 });
+                break;
+            case ShotLook::Mug:
+                DrawCube(c, 0.14f, 0.18f, 0.14f, w.color);
+                DrawCube(Vector3Add(c, { 0, 0.1f, 0 }), 0.15f, 0.04f, 0.15f, w.color2);
+                break;
+            case ShotLook::Dart:
+                DrawCylinderEx(Vector3Subtract(c, Vector3Scale(dir, 0.12f)), c, 0.01f, 0.0f, 4, w.color);
+                break;
+            case ShotLook::Spark: // petardo con la miccia accesa
+                DrawCylinderEx(Vector3Subtract(c, Vector3Scale(dir, 0.06f)), Vector3Add(c, Vector3Scale(dir, 0.06f)), 0.035f, 0.035f, 6, w.color);
+                DrawSphereEx(Vector3Add(c, { 0, 0.05f, 0 }), 0.02f + 0.01f * sinf(t * 40), 3, 3, { 255, 230, 120, 255 });
+                break;
+            case ShotLook::Wave: // l'onda di vento della Kusanagi
+                DrawCylinderEx(Vector3Add(c, { -dir.z * 0.4f, 0, dir.x * 0.4f }), Vector3Add(c, { dir.z * 0.4f, 0, -dir.x * 0.4f }),
+                               0.05f, 0.05f, 5, Fade({ 170, 240, 255, 255 }, 0.6f));
+                break;
+            case ShotLook::Rocket: // razzo con la scia di scintille
                 DrawCylinderEx(Vector3Subtract(c, Vector3Scale(dir, 0.15f)), Vector3Add(c, Vector3Scale(dir, 0.1f)),
                                0.05f, 0.05f, 6, { 200, 45, 45, 255 });
                 DrawCylinderEx(Vector3Add(c, Vector3Scale(dir, 0.1f)), Vector3Add(c, Vector3Scale(dir, 0.18f)),
@@ -901,134 +1094,25 @@ void Game::DrawExplosions() const {
             Vector3 dir{ cosf(yaw) * cosf(pitch), sinf(pitch) * 0.8f + 0.3f, sinf(yaw) * cosf(pitch) };
             Vector3 p = Vector3Add(x.pos, Vector3Scale(dir, grow * 1.7f));
             p.y -= k * k * 0.4f; // le scintille ricadono un po'
-            DrawSphereEx(p, 0.05f, 3, 3, Fade(colors[(h >> 5) % 6], 1 - k));
+            Color col = x.foam ? Color{ 250, 245, 225, 255 } : colors[(h >> 5) % 6]; // schiuma: bianca
+            DrawSphereEx(p, x.foam ? 0.08f : 0.05f, 3, 3, Fade(col, 1 - k));
         }
     }
     rlDrawRenderBatchActive();
     rlEnableDepthMask();
 }
 
-void Game::DrawEnemy(const Enemy& e) const {
-    const District& d = GetDistrict(floor);
-    float dist = Vector2Distance(e.pos, player.pos) / TILE;
-    if (dist > VIEW_DIST) return;
-    auto fog = [&](Color c) { return e.hitFlash > 0 ? WHITE : ApplyFog(c, d.horizon, dist); };
-
-    float t = (float)GetTime();
-    float r = e.radius / TILE;
-    Vector2 dir = e.facing; // guarda dove sta guardando davvero: alle spalle si puo' passare inosservati
-    Vector3 fwd{ dir.x, 0, dir.y }, side{ -dir.y, 0, dir.x }, up{ 0, 1, 0 };
-    Vector3 center = To3D(e.pos, EnemyBodyY(e));
-    if (e.doom > 0) center.x += sinf(t * 60) * 0.02f; // il goblin condannato trema
-    Vector3 top = Vector3Add(center, Vector3Scale(up, r * 0.8f));
-    bool blink = e.windup > 0 && fmodf(t, 0.16f) < 0.08f;
-    Color eyes = BLACK;
-
-    // Preavvisi dell'oni sul pavimento: dove carichera' e fin dove arriva lo schianto
-    if (e.type == EnemyType::Oni && e.windup > 0) {
-        Vector3 ground = To3D(e.pos, 0.03f);
-        if (e.attack == EnemyAttack::Charge) {
-            Vector3 end = Vector3Add(ground, { e.attackDir.x * 8.0f, 0, e.attackDir.y * 8.0f });
-            DrawCylinderEx(ground, end, 0.12f, 0.12f, 4, Fade(RED, 0.55f));
-        } else if (e.attack == EnemyAttack::Slam) {
-            for (float k : { 1.0f, 0.97f, 0.94f })
-                DrawCircle3D(ground, ONI_SLAM_RADIUS / TILE * k, { 1, 0, 0 }, 90, Fade(RED, blink ? 0.9f : 0.5f));
-        }
-    }
-
-    Color body{};
-    switch (e.type) {
-        case EnemyType::Goblin: {
-            body = e.doom > 0 ? Color{ 70, 40, 80, 255 } : Color{ 96, 142, 58, 255 };
-            if (e.power > 1.01f) body = Mix(body, { 150, 60, 40, 255 }, std::min(1.0f, (e.power - 1) * 0.5f));
-            // Orecchie a punta
-            for (float s : { -1.0f, 1.0f }) {
-                Vector3 base = Vector3Add(center, Vector3Add(Vector3Scale(side, s * r * 0.75f), Vector3Scale(up, r * 0.35f)));
-                Vector3 tip = Vector3Add(base, Vector3Add(Vector3Scale(side, s * r * 0.9f), Vector3Scale(up, r * 0.45f)));
-                DrawCylinderEx(base, tip, r * 0.22f, 0.01f, 5, fog({ 120, 160, 80, 255 }));
-            }
-            eyes = e.windup > 0 ? Color{ 255, 230, 60, 255 } : Color{ 220, 200, 40, 255 };
-            break;
-        }
-        case EnemyType::Robot: {
-            // Corpo squadrato, girato dove guarda: si disegna da solo e non usa la sfera
-            Color stripe = e.role == RobotRole::Gunner ? Color{ 60, 200, 230, 255 } : Color{ 235, 135, 40, 255 };
-            Color visor = e.windup > 0 ? (blink ? WHITE : RED) : Color{ 255, 70, 60, 255 };
-            rlPushMatrix();
-            rlTranslatef(center.x, center.y, center.z);
-            rlRotatef(atan2f(-dir.y, dir.x) * RAD2DEG, 0, 1, 0);
-            DrawCube({ 0, 0, 0 }, r * 1.5f, r * 1.6f, r * 1.4f, fog({ 140, 146, 158, 255 }));
-            DrawCubeWires({ 0, 0, 0 }, r * 1.5f, r * 1.6f, r * 1.4f, fog({ 70, 74, 84, 255 }));
-            DrawCube({ 0, -r * 0.2f, 0 }, r * 1.55f, r * 0.25f, r * 1.45f, fog(stripe));
-            DrawCube({ 0, r * 1.05f, 0 }, r * 0.9f, r * 0.55f, r * 0.9f, fog({ 120, 126, 138, 255 }));
-            DrawCube({ r * 0.46f, r * 1.05f, 0 }, r * 0.08f, r * 0.18f, r * 0.7f, e.hitFlash > 0 ? WHITE : visor);
-            DrawCylinderEx({ 0, r * 1.3f, 0 }, { 0, r * 1.9f, 0 }, 0.012f, 0.012f, 3, fog(DARKGRAY));
-            DrawSphereEx({ 0, r * 1.95f, 0 }, 0.03f, 4, 4, stripe);
-            if (e.role == RobotRole::Gunner) // cannone sul braccio
-                DrawCylinderEx({ r * 0.2f, 0, r * 0.85f }, { r * 1.1f, 0, r * 0.85f }, r * 0.16f, r * 0.16f, 6, fog(DARKGRAY));
-            else // lame
-                for (float s : { -1.0f, 1.0f })
-                    DrawCube({ r * 0.8f, -r * 0.1f, s * r * 0.8f }, r * 0.9f, r * 0.08f, r * 0.12f, fog(LIGHTGRAY));
-            rlPopMatrix();
-            if (e.burnTimer > 0)
-                DrawSphereEx(Vector3Add(top, { 0, 0.25f, 0 }), 0.05f + 0.02f * sinf(t * 20), 4, 4, ORANGE);
-            return;
-        }
-        case EnemyType::Tengu:
-            body = { 200, 50, 50, 255 };
-            // Il naso lungo, puntato verso di te
-            DrawCylinderEx(Vector3Add(center, Vector3Scale(fwd, r * 0.8f)),
-                           Vector3Add(center, Vector3Scale(fwd, r + 0.25f)), r * 0.18f, 0.01f, 6,
-                           fog({ 230, 90, 80, 255 }));
-            break;
-        case EnemyType::Oni:
-            body = e.enraged ? Color{ 170, 50, 60, 255 } : Color{ 110, 70, 160, 255 };
-            // Le corna
-            for (float s : { -1.0f, 1.0f }) {
-                Vector3 baseHorn = Vector3Add(top, Vector3Scale(side, s * r * 0.45f));
-                DrawCylinderEx(baseHorn, Vector3Add(baseHorn, { side.x * s * 0.06f, 0.28f, side.z * s * 0.06f }),
-                               r * 0.16f, 0.01f, 6, fog({ 240, 230, 210, 255 }));
-            }
-            // La clava: alzata mentre carica il colpo
-            {
-                Vector3 hand = Vector3Add(center, Vector3Add(Vector3Scale(side, r * 1.05f), Vector3Scale(fwd, r * 0.3f)));
-                Vector3 club = e.windup > 0 && e.attack == EnemyAttack::Swing
-                                   ? Vector3Add(hand, { 0, 0.55f, 0 })
-                                   : Vector3Add(hand, Vector3Add(Vector3Scale(fwd, 0.45f), { 0, 0.1f, 0 }));
-                DrawCylinderEx(hand, club, 0.04f, 0.09f, 6, fog({ 90, 70, 50, 255 }));
-            }
-            eyes = e.enraged ? Color{ 255, 220, 60, 255 } : BLACK;
-            // Stordito dopo una carica contro il muro: stelline che girano
-            if (e.stun > 0)
-                for (int k = 0; k < 3; ++k) {
-                    float a = t * 5 + k * 2.1f;
-                    DrawSphereEx(Vector3Add(top, { cosf(a) * 0.3f, 0.3f, sinf(a) * 0.3f }), 0.04f, 4, 4, YELLOW);
-                }
-            break;
-    }
-    if (blink && e.type != EnemyType::Goblin) body = Mix(body, RED, 0.6f);
-    DrawSphereEx(center, r, 10, 10, fog(body));
-
-    // Occhi: guardano dove guarda lui
-    for (float s : { -1.0f, 1.0f }) {
-        Vector3 eye = Vector3Add(Vector3Add(center, Vector3Scale(fwd, r * 0.88f)),
-                                 Vector3Add(Vector3Scale(side, s * r * 0.32f), Vector3Scale(up, r * 0.2f)));
-        DrawSphereEx(eye, r * 0.12f, 4, 4, eyes);
-    }
-
-    if (e.burnTimer > 0)
-        DrawSphereEx(Vector3Add(top, { 0, 0.15f, 0 }), 0.05f + 0.02f * sinf(t * 20), 4, 4, ORANGE);
-}
-
-// Barra del boss in alto al centro, finche' l'oni ti sta dando la caccia
+// Barra del guardiano in alto al centro, finche' ti sta dando la caccia
 void Game::DrawBossBar() const {
     const Enemy* boss = AwakeBoss();
     if (!boss || state != State::Playing) return;
     int sw = GetScreenWidth(), w = std::min(560, sw - 760);
     if (w < 200) w = 200;
     int x = (sw - w) / 2, y = 24;
-    DrawTextCentered(boss->enraged ? "ONI - Guardiano del torii (furioso)" : "ONI - Guardiano del torii", sw / 2, y, 20,
-                     boss->enraged ? Color{ 255, 120, 100, 255 } : GOLD);
+    std::string title = InfoOf(boss->type).bossTitle;
+    if (boss->empowered) title = "POTENZIATO - " + title;
+    if (boss->enraged) title += " (furioso)";
+    DrawTextCentered(title.c_str(), sw / 2, y, 20, boss->enraged ? Color{ 255, 120, 100, 255 } : GOLD);
     DrawRectangle(x, y + 24, w, 12, { 20, 20, 20, 210 });
     DrawRectangle(x, y + 24, (int)(w * std::max(0.0f, boss->hp / boss->maxHp)), 12, { 190, 40, 60, 255 });
     DrawRectangleLines(x, y + 24, w, 12, WHITE);
@@ -1046,7 +1130,7 @@ void Game::DrawWorldOverlay() const {
     };
 
     for (const auto& e : enemies) {
-        if (!e.alive || e.hp >= e.maxHp || !visible(e.pos)) continue;
+        if (!e.alive || e.hp >= e.maxHp || e.hidden || !Damageable(e) || !visible(e.pos)) continue;
         float r = e.radius / TILE;
         float dist = Vector2Distance(e.pos, player.pos) / TILE;
         Vector2 s = GetWorldToScreen(To3D(e.pos, EnemyBodyY(e) + r + 0.18f), camera);
@@ -1088,7 +1172,7 @@ void Game::DrawWorldOverlay() const {
 }
 
 void Game::DrawFirstPerson() const {
-    const District& d = GetDistrict(floor);
+    const District& d = CurrentDistrict();
     int sw = GetScreenWidth(), sh = GetScreenHeight();
 
     // Mirino
@@ -1126,7 +1210,7 @@ std::string Game::ControlsHint() const {
 }
 
 void Game::DrawHud() const {
-    const District& d = GetDistrict(floor);
+    const District& d = CurrentDistrict();
     int sw = GetScreenWidth(), sh = GetScreenHeight();
 
     // Vita
@@ -1158,6 +1242,8 @@ void Game::DrawHud() const {
         if (id >= 0) DrawText(AllWeapons()[id].name, (int)r.x + 10, (int)r.y + 11, 18, active ? WHITE : GRAY);
         else DrawText("nessuna arma", (int)r.x + 10, (int)r.y + 12, 16, DARKGRAY);
     }
+
+    DrawStatusEffects();
 
     // Pannello destro: elementi e sinergie attive
     int px = sw - 270, py = input.UsingTouch() ? 92 : 20; // col touch in alto a destra ci sono i tasti menu
@@ -1216,7 +1302,7 @@ void Game::DrawIntroTitle(const District& d) const {
         DrawTextCentered(d.city, sw / 2 + 3, sh / 3 + 3, 72, Fade(BLACK, alpha * 0.6f));
         DrawTextCentered(d.city, sw / 2, sh / 3, 72, Fade(d.accent, alpha));
         DrawTextCentered(d.place, sw / 2, sh / 3 + 80, 28, Fade(WHITE, alpha));
-        DrawTextCentered("Il labirinto e' precipitato sulla citta': trova il torii per uscire",
+        DrawTextCentered("Il labirinto e' caduto anche qui. Trova il torii per andare avanti",
                          sw / 2, sh / 3 + 118, 18, Fade(LIGHTGRAY, alpha));
     }
 }
@@ -1283,7 +1369,7 @@ void Game::DrawGameOver() const {
         return;
     }
     // ...e poi il resoconto del sogno
-    const District& d = GetDistrict(floor);
+    const District& d = CurrentDistrict();
     int sw = GetScreenWidth(), sh = GetScreenHeight();
     float a = std::min(1.0f, (deathTime - (WakeUp::END - 0.6f)) / 0.6f);
     Rectangle panel{ sw - 520.0f, sh * 0.5f - 210, 470, 330 };

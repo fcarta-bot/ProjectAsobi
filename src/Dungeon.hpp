@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <random>
 #include <vector>
 #include "raylib.h"
 
@@ -41,12 +42,31 @@ struct Room {
     Vector2 Center() const { return { (CenterX() + 0.5f) * TILE, (CenterY() + 0.5f) * TILE }; }
 };
 
-enum class DistrictId { Kyoto, Nara, Osaka, Tokyo };
-enum class Skyline { Temples, Hills, Downtown, Skyscrapers };
+// Il giro del mondo: ogni piano e' una zona di una citta' su cui e' precipitato il labirinto
+// (tabella dei distretti in World.cpp)
+enum class Country { Japan, USA, Italy, France, Germany, England, Spain };
+constexpr int COUNTRY_COUNT = 7;
 
-// Ogni piano e' una zona di una citta' giapponese su cui e' precipitato il labirinto.
+enum class DistrictId {
+    Kyoto, Nara, Osaka, Tokyo,                  // Giappone
+    NewYork, NewOrleans, Chicago, LasVegas,     // Stati Uniti
+    Rome, Venice, Naples, Florence,             // Italia
+    Paris, Munich, London, Seville,             // Francia, Germania, Inghilterra, Spagna
+};
+constexpr int DISTRICT_COUNT = 16;
+
+// Pezzi di edificio rimasti incastrati nei muri del labirinto
+enum class Facade {
+    Machiya, Temple, Neon,                      // Giappone
+    Manhattan, IronBalcony, Brick, Casino,      // Stati Uniti
+    Travertine, Venetian, Neapolitan, Florentine,
+    Haussmann, Fachwerk, LondonBrick, Andalusian,
+};
+enum class TreeStyle { Round, Moss, UmbrellaPine, Palm, Cypress, Conifer, Orange };
+
 struct District {
     DistrictId id;
+    Country country;
     const char* city;
     const char* place;
     Color skyTop, horizon;   // cielo in alto e all'orizzonte: l'orizzonte e' anche il colore della foschia
@@ -55,10 +75,18 @@ struct District {
     Color foliage;           // chiome degli alberi
     Color accent;            // torii d'uscita e dettagli
     bool night;              // di notte finestre e insegne sono accese
-    Skyline skyline;
+    Facade facade;
     int facadeChance;        // % di facce di muro che hanno inglobato un pezzo di edificio
+    TreeStyle trees;
+    bool urban;              // citta' fitta: distributori e insegne, pochi alberi
+    float sunAngle;          // direzione del sole basso sull'orizzonte; < 0 = niente sole
+    bool snow;               // a terra c'e' la neve (Monaco d'inverno)
 };
-const District& GetDistrict(int floor);
+const District& GetDistrict(int index); // index da 0 a DISTRICT_COUNT-1
+const char* CountryName(Country c);
+const char* CountryAdjective(Country c); // "giapponese", "americano"...
+// Ordine casuale dei distretti per una run intera (si mischiano tutti prima di ripeterne uno)
+std::vector<int> MakeWorldTour(unsigned seed, int floors);
 
 class Dungeon {
 public:
@@ -69,7 +97,9 @@ public:
     bool IsSolidAt(Vector2 worldPos) const;
     bool HasLineOfSight(Vector2 a, Vector2 b) const; // nessun muro tra i due punti
     bool InRoom(int tx, int ty) const;               // false nei corridoi
+    int RoomAt(int tx, int ty) const;                // indice della stanza, -1 nei corridoi
     Ground GroundAt(int tx, int ty) const;
+    float WallHeight(int tx, int ty) const;          // i muri caduti non sono tutti uguali
 
     int Width() const { return width; }
     int Height() const { return height; }
@@ -82,8 +112,12 @@ public:
     void Draw3D(const District& d, Vector3 eye, Vector2 forward) const;
 
 private:
-    void Carve(int x, int y, int w, int h, Tile t = Tile::Floor);
-    void Corridor(const Room& a, const Room& b, bool horizontalFirst);
+    void Carve(int x, int y, int w, int h, int room = -1);
+    void CarveEllipse(const Room& r, int room);
+    void WindingCorridor(const Room& a, const Room& b, std::mt19937& rng);
+    void Erode(std::mt19937& rng);
+    void RemoveUnreachable();
+    std::vector<int> DistancesFrom(int tx, int ty) const; // passi a piedi da una casella (-1 = irraggiungibile)
     void DrawGround(const District& d, int tx, int tz, float dist) const;
     void DrawWall(const District& d, int tx, int tz, int nx, int nz, float dist) const;
 
@@ -91,6 +125,7 @@ private:
     unsigned seed = 0;
     int roadOffsetX = 0, roadOffsetY = 0; // spostano il reticolo delle strade a ogni piano
     std::vector<Tile> tiles;
+    std::vector<int8_t> roomOf; // a quale stanza appartiene ogni casella (-1 = corridoio o muro)
     std::vector<Room> rooms;
     Vector2 exitPos{};
 };

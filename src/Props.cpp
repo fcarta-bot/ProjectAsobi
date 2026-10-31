@@ -22,6 +22,23 @@ static const Color BIN_COLORS[] = { // i cestini giapponesi dividono i rifiuti p
     { 120, 120, 126, 255 }, // indifferenziato
 };
 static const Color VENDING_COLORS[] = { { 236, 236, 236, 255 }, { 190, 30, 40, 255 }, { 30, 90, 170, 255 } };
+static const Color NEON[] = { { 220, 60, 60, 255 }, { 40, 110, 200, 255 }, { 240, 190, 40, 255 }, { 60, 160, 90, 255 } };
+
+// Le auto del posto: taxi gialli a New York, cab neri a Londra, utilitarie colorate in Italia...
+static Color CarColor(const District& d, std::mt19937& rng) {
+    unsigned r = rng() % 100;
+    switch (d.id) {
+        case DistrictId::NewYork: if (r < 45) return { 246, 196, 30, 255 }; break;
+        case DistrictId::London:  if (r < 40) return { 24, 24, 28, 255 }; break;
+        case DistrictId::Rome: case DistrictId::Naples: case DistrictId::Florence: {
+            static const Color fiat[] = { { 210, 220, 200, 255 }, { 120, 170, 200, 255 }, { 200, 60, 50, 255 }, { 240, 230, 200, 255 } };
+            if (r < 50) return fiat[r % 4];
+            break;
+        }
+        default: break;
+    }
+    return CAR_COLORS[rng() % 7];
+}
 
 // Riquadro di collisione orientato lungo x o lungo z (dimensioni in caselle)
 static Vector2 Half(float lengthX, float widthZ, bool alongX) {
@@ -52,7 +69,7 @@ void CityProps::Generate(const Dungeon& dg, const District& d, Vector2 start) {
         used[ty * W + tx] = 1;
         return &props.back();
     };
-    const bool urban = d.id == DistrictId::Osaka || d.id == DistrictId::Tokyo;
+    const bool urban = d.urban;
 
     // I mille torii di Fushimi Inari: a cavallo dei corridoi di Kyoto, uno ogni tre caselle
     if (d.id == DistrictId::Kyoto) {
@@ -102,7 +119,7 @@ void CityProps::Generate(const Dungeon& dg, const District& d, Vector2 start) {
                     car.flipped = !facingOut;
                     car.flammable = true;
                     car.burning = roll(30);
-                    car.color = CAR_COLORS[pick(7)];
+                    car.color = CarColor(d, rng);
                     add(car, tx, ty);
                     // Se il muro e' sottile, dall'altra parte spunta l'altra meta' (stessa auto)
                     int ox = tx + 2 * nx, oy = ty + 2 * nz;
@@ -115,7 +132,34 @@ void CityProps::Generate(const Dungeon& dg, const District& d, Vector2 start) {
                     }
                     continue;
                 }
-                if (urban && roll(7)) {
+                // Contro i muri delle citta' fitte: cio' che c'e' di tipico sui marciapiedi del posto
+                if (urban && d.country != Country::Japan && roll(6)) {
+                    PropType type = PropType::NewsBox;
+                    if (d.country == Country::England) type = roll(50) ? PropType::PhoneBox : PropType::PostBox;
+                    else if (d.country == Country::France) type = PropType::MorrisColumn;
+                    else if (d.country == Country::Italy || d.country == Country::Spain) type = PropType::Scooter;
+                    Prop v{ type };
+                    v.alongX = alongX;
+                    v.flipped = facingOut;
+                    v.pos = Vector2Add(c, Vector2Scale(n, TILE * 0.25f));
+                    switch (type) {
+                        case PropType::PhoneBox:     v.half = { 6.5f, 6.5f }; v.height = 1.3f; break;
+                        case PropType::PostBox:      v.half = { 4, 4 }; v.height = 0.6f; break;
+                        case PropType::MorrisColumn: v.half = { 7, 7 }; v.height = 1.4f; break;
+                        case PropType::Scooter:
+                            v.knocked = roll(40);
+                            v.half = Half(0.8f, 0.3f, !alongX);
+                            v.alongX = !alongX; // parcheggiato lungo il muro
+                            v.height = v.knocked ? 0.2f : 0.42f;
+                            v.flammable = true;
+                            v.color = CAR_COLORS[pick(7)];
+                            break;
+                        default: v.half = { 5, 5 }; v.height = 0.45f; v.color = NEON[pick(4)]; break;
+                    }
+                    add(v, tx, ty);
+                    continue;
+                }
+                if (urban && d.country == Country::Japan && roll(7)) {
                     Prop v{ PropType::Vending };
                     v.knocked = roll(30);
                     v.alongX = alongX;
@@ -182,7 +226,7 @@ void CityProps::Generate(const Dungeon& dg, const District& d, Vector2 start) {
                     car.flipped = pick(2);
                     car.flammable = true;
                     car.burning = roll(car.knocked ? 25 : 8);
-                    car.color = CAR_COLORS[pick(7)];
+                    car.color = CarColor(d, rng);
                     add(car, tx, ty);
                     used[oy * W + ox] = 1;
                     continue;
@@ -197,6 +241,8 @@ void CityProps::Generate(const Dungeon& dg, const District& d, Vector2 start) {
             } else if (g == Ground::Sidewalk) {
                 table = { { PropType::Bin, 4 }, { PropType::Lamp, 3 }, { PropType::Bench, 2.5f }, { PropType::Cone, 1.5f } };
                 if (!urban) table.push_back({ PropType::Tree, 3 });
+                if (d.country == Country::USA) table.insert(table.begin(), { PropType::Hydrant, 3 });
+                if (d.snow) table.push_back({ PropType::Snowman, 1.5f });
             } else switch (d.id) {
                 case DistrictId::Kyoto:
                     table = { { PropType::StoneLantern, 3 }, { PropType::Tree, 4 }, { PropType::FallenTree, 1 }, { PropType::Rubble, 2 } };
@@ -213,6 +259,54 @@ void CityProps::Generate(const Dungeon& dg, const District& d, Vector2 start) {
                     table = { { PropType::Bin, 3 }, { PropType::Cone, 3 }, { PropType::Rubble, 2.5f },
                               { PropType::Bench, 2 }, { PropType::Tree, 1.5f } };
                     break;
+                case DistrictId::NewYork:
+                    table = { { PropType::Hydrant, 2.5f }, { PropType::NewsBox, 2 }, { PropType::Yatai, 1.5f },
+                              { PropType::Bin, 3 }, { PropType::Cone, 2.5f }, { PropType::Rubble, 2 } };
+                    break;
+                case DistrictId::NewOrleans:
+                    table = { { PropType::Tree, 5 }, { PropType::Bench, 2 }, { PropType::Lamp, 2 },
+                              { PropType::FallenTree, 1.5f }, { PropType::Rubble, 1.5f } };
+                    break;
+                case DistrictId::Chicago:
+                    table = { { PropType::Tree, 6 }, { PropType::FallenTree, 1.5f }, { PropType::Bench, 3 },
+                              { PropType::Hydrant, 1.5f }, { PropType::Rubble, 1 } };
+                    break;
+                case DistrictId::LasVegas:
+                    table = { { PropType::Tree, 3 }, { PropType::Rubble, 2.5f }, { PropType::Cone, 2 },
+                              { PropType::NewsBox, 1.5f }, { PropType::Vending, 1 } };
+                    break;
+                case DistrictId::Rome:
+                    table = { { PropType::Tree, 3.5f }, { PropType::Column, 2.5f }, { PropType::Fountain, 1.2f },
+                              { PropType::Scooter, 2.5f }, { PropType::Rubble, 2.5f }, { PropType::CafeTable, 1 } };
+                    break;
+                case DistrictId::Venice:
+                    table = { { PropType::CafeTable, 3 }, { PropType::Fountain, 1.5f }, { PropType::Bench, 1.5f },
+                              { PropType::Rubble, 1.5f }, { PropType::Tree, 1 } };
+                    break;
+                case DistrictId::Naples:
+                    table = { { PropType::Scooter, 5 }, { PropType::Bin, 3 }, { PropType::Rubble, 2 },
+                              { PropType::Yatai, 1 }, { PropType::Cone, 1 } };
+                    break;
+                case DistrictId::Florence:
+                    table = { { PropType::CafeTable, 2 }, { PropType::Statue, 1.5f }, { PropType::Scooter, 2 },
+                              { PropType::Bench, 1.5f }, { PropType::Tree, 1.5f }, { PropType::Rubble, 1.5f } };
+                    break;
+                case DistrictId::Paris:
+                    table = { { PropType::CafeTable, 4 }, { PropType::MorrisColumn, 1 }, { PropType::Tree, 2.5f },
+                              { PropType::Bench, 2 }, { PropType::Lamp, 1.5f } };
+                    break;
+                case DistrictId::Munich:
+                    table = { { PropType::Tree, 4 }, { PropType::Bench, 3 }, { PropType::Snowman, 1.5f },
+                              { PropType::Yatai, 1 }, { PropType::FallenTree, 1 } };
+                    break;
+                case DistrictId::London:
+                    table = { { PropType::PhoneBox, 1.2f }, { PropType::PostBox, 1.5f }, { PropType::Bench, 2 },
+                              { PropType::Tree, 2.5f }, { PropType::Lamp, 2 }, { PropType::Bin, 1.5f } };
+                    break;
+                case DistrictId::Seville:
+                    table = { { PropType::Tree, 5 }, { PropType::Bench, 2 }, { PropType::Scooter, 2 },
+                              { PropType::Fountain, 1 }, { PropType::CafeTable, 1.5f } };
+                    break;
             }
 
             for (const Choice& ch : table) {
@@ -220,7 +314,9 @@ void CityProps::Generate(const Dungeon& dg, const District& d, Vector2 start) {
                 // Nei corridoi solo cose basse: si devono poter scavalcare
                 if (corridor && (ch.type == PropType::Tree || ch.type == PropType::Yatai ||
                                  ch.type == PropType::StoneLantern || ch.type == PropType::Lamp ||
-                                 ch.type == PropType::Deer)) break;
+                                 ch.type == PropType::Deer || ch.type == PropType::PhoneBox ||
+                                 ch.type == PropType::Statue || ch.type == PropType::MorrisColumn ||
+                                 ch.type == PropType::Fountain)) break;
                 Prop p{ ch.type };
                 p.pos = c;
                 p.alongX = pick(2);
@@ -281,6 +377,38 @@ void CityProps::Generate(const Dungeon& dg, const District& d, Vector2 start) {
                         p.flammable = true;
                         p.burning = roll(15);
                         break;
+                    case PropType::Hydrant:  p.half = { 3.5f, 3.5f }; p.height = 0.3f; break;
+                    case PropType::NewsBox:  p.half = { 5, 5 }; p.height = 0.45f; p.color = NEON[pick(4)]; break;
+                    case PropType::Vending:  p.half = Half(0.32f, 0.46f, p.alongX); p.height = 0.75f; p.color = VENDING_COLORS[pick(3)]; break;
+                    case PropType::Scooter:
+                        p.knocked = roll(40);
+                        p.half = Half(0.8f, 0.3f, p.alongX);
+                        p.height = p.knocked ? 0.2f : 0.42f;
+                        p.flammable = true;
+                        p.burning = roll(6);
+                        p.color = CAR_COLORS[pick(7)];
+                        break;
+                    case PropType::CafeTable:
+                        p.knocked = roll(30);
+                        p.half = { 9, 9 };
+                        p.height = 0.3f;
+                        p.flammable = true;
+                        p.color = NEON[pick(4)];
+                        break;
+                    case PropType::PhoneBox:     p.half = { 6.5f, 6.5f }; p.height = 1.3f; break;
+                    case PropType::PostBox:      p.half = { 4, 4 }; p.height = 0.6f; break;
+                    case PropType::MorrisColumn: p.half = { 7, 7 }; p.height = 1.4f; break;
+                    case PropType::Statue:       p.half = { 7, 7 }; p.height = 1.6f; break;
+                    case PropType::Snowman:      p.half = { 6, 6 }; p.height = 0.6f; break;
+                    case PropType::Fountain:     p.half = { 6, 6 }; p.height = 0.5f; break;
+                    case PropType::Column: {
+                        int ax = p.alongX ? 1 : 0, ay = p.alongX ? 0 : 1;
+                        if (!isFree(tx - ax, ty - ay) || !isFree(tx + ax, ty + ay)) continue;
+                        p.half = Half(2.4f, 0.4f, p.alongX);
+                        p.height = 0.36f; // si scavalca con un salto
+                        used[(ty - ay) * W + tx - ax] = used[(ty + ay) * W + tx + ax] = 1;
+                        break;
+                    }
                     default: break;
                 }
                 add(p, tx, ty);
@@ -406,15 +534,162 @@ void DrawCar(const Prop& p, const Paint& f, bool night) {
     }
 }
 
-void DrawTree(const Prop& p, const Paint& f) {
+// Ogni citta' ha i suoi alberi: pini a ombrello a Roma, palme a Las Vegas, aranci a Siviglia...
+void DrawTree(const Prop& p, const Paint& f, TreeStyle style) {
     if (p.knocked) rlRotatef(-14, 0, 0, 1); // piegato via dal muro
     const Color bark = f({ 92, 64, 44, 255 });
-    DrawCylinder({ 0, 0, 0 }, 0.07f, 0.1f, 1.3f, 7, bark);
     float tint = 0.9f + (p.seed % 20) / 100.0f;
     Color leaves = f(Shade(p.color, tint)), dark = f(Shade(p.color, tint * 0.8f));
+    switch (style) {
+        case TreeStyle::UmbrellaPine: // tronco alto e storto, chioma piatta a ombrello
+            DrawCylinderEx({ 0, 0, 0 }, { 0.15f, 1.9f, 0 }, 0.09f, 0.06f, 7, bark);
+            DrawCylinder({ 0.15f, 1.9f, 0 }, 0.85f, 0.7f, 0.32f, 10, leaves);
+            DrawCylinder({ 0.15f, 2.2f, 0 }, 0.6f, 0.2f, 0.16f, 10, dark);
+            return;
+        case TreeStyle::Palm: { // tronco sottile ad anelli e foglie che ricadono
+            DrawCylinderEx({ 0, 0, 0 }, { 0.12f, 2.4f, 0 }, 0.07f, 0.05f, 6, f({ 140, 110, 80, 255 }));
+            for (int k = 0; k < 7; ++k) {
+                float a = k * 2 * PI / 7;
+                Vector3 top{ 0.12f, 2.4f, 0 }, tip{ 0.12f + cosf(a) * 0.8f, 2.0f, sinf(a) * 0.8f };
+                DrawCylinderEx(top, tip, 0.08f, 0.01f, 4, k % 2 ? leaves : dark);
+            }
+            return;
+        }
+        case TreeStyle::Cypress: // il cipresso toscano: un fuso scuro
+            DrawCylinder({ 0, 0, 0 }, 0.05f, 0.06f, 0.4f, 6, bark);
+            DrawCylinder({ 0, 0.3f, 0 }, 0.28f, 0.02f, 2.6f, 8, dark);
+            DrawCylinder({ 0, 0.3f, 0 }, 0.3f, 0.26f, 0.9f, 8, leaves);
+            return;
+        case TreeStyle::Conifer: { // abete con la neve sopra
+            DrawCylinder({ 0, 0, 0 }, 0.07f, 0.08f, 0.5f, 6, bark);
+            for (int k = 0; k < 3; ++k)
+                DrawCylinder({ 0, 0.45f + k * 0.65f, 0 }, 0.0f, 0.7f - k * 0.18f, 0.9f, 8, k % 2 ? dark : leaves);
+            DrawCylinder({ 0, 0.95f, 0 }, 0.0f, 0.5f, 0.3f, 8, f({ 240, 242, 246, 255 }));
+            return;
+        }
+        default: break;
+    }
+    DrawCylinder({ 0, 0, 0 }, 0.07f, 0.1f, 1.3f, 7, bark);
     DrawSphereEx({ 0, 1.5f, 0 }, 0.55f, 7, 7, leaves);
     DrawSphereEx({ 0.28f, 1.22f, 0.12f }, 0.38f, 6, 6, dark);
     DrawSphereEx({ -0.22f, 1.28f, -0.16f }, 0.4f, 6, 6, dark);
+    if (style == TreeStyle::Moss) // il muschio spagnolo che pende dalle querce della Louisiana
+        for (int k = 0; k < 6; ++k) {
+            float a = k * 1.05f;
+            DrawCylinderEx({ cosf(a) * 0.45f, 1.25f, sinf(a) * 0.45f }, { cosf(a) * 0.5f, 0.75f, sinf(a) * 0.5f },
+                           0.06f, 0.01f, 4, f({ 150, 160, 130, 255 }));
+        }
+    if (style == TreeStyle::Orange) // arance tra le foglie
+        for (int k = 0; k < 7; ++k) {
+            unsigned h = TileHash((int)p.seed, k, 41);
+            float a = (h % 628) / 100.0f, y = 1.2f + (h >> 10) % 50 / 100.0f;
+            DrawSphereEx({ cosf(a) * 0.48f, y, sinf(a) * 0.48f }, 0.06f, 4, 4, f({ 250, 150, 30, 255 }));
+        }
+}
+
+void DrawHydrant(const Paint& f) {
+    Color red = f({ 200, 40, 36, 255 });
+    DrawCylinder({ 0, 0, 0 }, 0.08f, 0.08f, 0.24f, 8, red);
+    DrawSphereEx({ 0, 0.25f, 0 }, 0.08f, 6, 6, red);
+    DrawCylinderEx({ -0.12f, 0.15f, 0 }, { 0.12f, 0.15f, 0 }, 0.035f, 0.035f, 6, f({ 220, 210, 190, 255 }));
+}
+
+void DrawNewsBox(const Prop& p, const Paint& f) {
+    DrawCube({ 0, 0.26f, 0 }, 0.3f, 0.34f, 0.28f, f(p.color));
+    DrawCube({ 0.151f, 0.32f, 0 }, 0.005f, 0.14f, 0.2f, f({ 230, 230, 220, 255 }));
+    for (float z : { -0.11f, 0.11f }) DrawCube({ 0, 0.05f, z }, 0.26f, 0.1f, 0.02f, f({ 50, 50, 54, 255 }));
+}
+
+void DrawScooter(const Prop& p, const Paint& f) {
+    if (p.knocked) { rlTranslatef(0, 0.12f, 0); rlRotatef(80, 1, 0, 0); } // caduto su un fianco
+    Color body = f(p.color), dark = f({ 26, 26, 28, 255 });
+    for (float x : { -0.32f, 0.32f })
+        DrawCylinderEx({ x, 0.1f, -0.04f }, { x, 0.1f, 0.04f }, 0.1f, 0.1f, 8, dark);
+    DrawCube({ -0.1f, 0.24f, 0 }, 0.4f, 0.16f, 0.22f, body);            // scocca
+    DrawCube({ -0.12f, 0.34f, 0 }, 0.28f, 0.05f, 0.18f, dark);          // sella
+    DrawCube({ 0.26f, 0.3f, 0 }, 0.06f, 0.36f, 0.18f, body);            // scudo
+    DrawCylinderEx({ 0.3f, 0.5f, -0.16f }, { 0.3f, 0.5f, 0.16f }, 0.015f, 0.015f, 4, dark); // manubrio
+}
+
+void DrawCafeTable(const Prop& p, const Paint& f) {
+    Color metal = f({ 40, 40, 44, 255 }), top = f({ 230, 230, 222, 255 });
+    if (p.knocked) { rlTranslatef(0, 0.1f, 0); rlRotatef(85, 1, 0, 0); }
+    DrawCylinder({ 0, 0, 0 }, 0.02f, 0.02f, 0.3f, 6, metal);
+    DrawCylinder({ 0, 0.3f, 0 }, 0.2f, 0.2f, 0.02f, 10, top);
+    for (float s : { -1.0f, 1.0f }) { // due sedie
+        Vector3 c{ s * 0.32f, 0, 0 };
+        DrawCube({ c.x, 0.2f, 0 }, 0.18f, 0.02f, 0.18f, f(p.color));
+        DrawCube({ c.x + s * 0.09f, 0.32f, 0 }, 0.02f, 0.24f, 0.18f, f(p.color));
+        DrawCylinder({ c.x, 0, 0 }, 0.012f, 0.012f, 0.2f, 4, metal);
+    }
+}
+
+void DrawPhoneBox(const Paint& f) {
+    Color red = f({ 200, 30, 36, 255 }), glass = f({ 60, 70, 80, 255 });
+    DrawCube({ 0, 0.62f, 0 }, 0.38f, 1.24f, 0.38f, red);
+    for (float s : { -1.0f, 1.0f }) {
+        DrawCube({ s * 0.191f, 0.7f, 0 }, 0.005f, 0.8f, 0.28f, glass);
+        DrawCube({ 0, 0.7f, s * 0.191f }, 0.28f, 0.8f, 0.005f, glass);
+    }
+    DrawCube({ 0, 1.28f, 0 }, 0.4f, 0.08f, 0.4f, red);
+    DrawCube({ 0.201f, 1.15f, 0 }, 0.005f, 0.06f, 0.24f, f({ 240, 240, 230, 255 })); // "TELEPHONE"
+}
+
+void DrawPostBox(const Paint& f) {
+    Color red = f({ 200, 30, 36, 255 });
+    DrawCylinder({ 0, 0, 0 }, 0.12f, 0.12f, 0.52f, 10, red);
+    DrawSphereEx({ 0, 0.52f, 0 }, 0.12f, 8, 8, f({ 30, 30, 32, 255 }));
+    DrawCube({ 0.12f, 0.4f, 0 }, 0.01f, 0.03f, 0.12f, f({ 20, 20, 20, 255 }));
+}
+
+void DrawColumn(const Paint& f) { // fusto scanalato a terra, spezzato in due, col capitello
+    Color marble = f({ 226, 218, 200, 255 });
+    DrawCylinderEx({ -1.15f, 0.18f, 0 }, { 0.0f, 0.18f, 0.05f }, 0.18f, 0.17f, 10, marble);
+    DrawCylinderEx({ 0.12f, 0.17f, 0.08f }, { 1.0f, 0.17f, 0.18f }, 0.17f, 0.16f, 10, f({ 214, 206, 190, 255 }));
+    DrawCube({ 1.15f, 0.2f, 0.2f }, 0.18f, 0.4f, 0.42f, marble);
+}
+
+void DrawFountain(const Paint& f, Country country) {
+    if (country == Country::Italy) { // il "nasone": cilindro di ghisa con il becco
+        Color iron = f({ 50, 54, 52, 255 });
+        DrawCylinder({ 0, 0, 0 }, 0.1f, 0.1f, 0.5f, 8, iron);
+        DrawCylinderEx({ 0.08f, 0.32f, 0 }, { 0.2f, 0.28f, 0 }, 0.025f, 0.02f, 5, iron);
+        DrawCube({ 0.22f, 0.02f, 0 }, 0.2f, 0.03f, 0.2f, f({ 90, 110, 130, 255 })); // l'acqua sotto
+        return;
+    }
+    Color stone = f({ 190, 180, 160, 255 });
+    DrawCylinder({ 0, 0, 0 }, 0.2f, 0.2f, 0.3f, 10, stone);
+    DrawCylinder({ 0, 0.3f, 0 }, 0.17f, 0.17f, 0.005f, 10, f({ 90, 120, 150, 255 }));
+    DrawCylinder({ 0, 0.3f, 0 }, 0.05f, 0.05f, 0.2f, 6, stone);
+}
+
+void DrawStatue(const Paint& f) {
+    Color marble = f({ 236, 232, 222, 255 });
+    DrawCube({ 0, 0.3f, 0 }, 0.4f, 0.6f, 0.4f, f({ 150, 140, 126, 255 }));
+    DrawCylinder({ 0, 0.6f, 0 }, 0.09f, 0.12f, 0.6f, 8, marble);   // corpo
+    DrawSphereEx({ 0, 1.3f, 0 }, 0.09f, 7, 7, marble);              // testa
+    DrawCylinderEx({ 0, 1.1f, 0.1f }, { 0.05f, 0.8f, 0.2f }, 0.035f, 0.03f, 5, marble); // braccio
+    DrawCylinderEx({ 0, 1.1f, -0.1f }, { 0.1f, 1.3f, -0.18f }, 0.035f, 0.03f, 5, marble);
+}
+
+void DrawMorrisColumn(const Paint& f) {
+    Color green = f({ 40, 80, 60, 255 });
+    DrawCylinder({ 0, 0, 0 }, 0.22f, 0.22f, 1.2f, 12, green);
+    static const Color posters[] = { { 230, 200, 80, 255 }, { 220, 80, 70, 255 }, { 240, 236, 220, 255 }, { 80, 120, 200, 255 } };
+    for (int k = 0; k < 4; ++k) {
+        float a = k * PI / 2;
+        DrawCube({ cosf(a) * 0.22f, 0.65f, sinf(a) * 0.22f }, 0.06f + fabsf(sinf(a)) * 0.2f, 0.5f, 0.06f + fabsf(cosf(a)) * 0.2f,
+                 f(posters[k]));
+    }
+    DrawCylinder({ 0, 1.2f, 0 }, 0.26f, 0.1f, 0.2f, 12, green);
+}
+
+void DrawSnowman(const Paint& f) {
+    Color snow = f({ 246, 248, 252, 255 });
+    DrawSphereEx({ 0, 0.18f, 0 }, 0.2f, 8, 8, snow);
+    DrawSphereEx({ 0, 0.44f, 0 }, 0.14f, 8, 8, snow);
+    DrawCylinderEx({ 0.12f, 0.46f, 0 }, { 0.24f, 0.45f, 0 }, 0.02f, 0.0f, 5, f({ 240, 120, 30, 255 })); // carota
+    DrawCylinder({ 0, 0.56f, 0 }, 0.1f, 0.1f, 0.1f, 8, f({ 30, 30, 34, 255 }));                         // cappello
 }
 
 void DrawFallenTree(const Prop& p, const Paint& f) {
@@ -529,7 +804,17 @@ void DrawDeer(const Prop& p, const Paint& f) {
     DrawCube({ -0.22f, 0.44f, 0 }, 0.04f, 0.06f, 0.06f, f({ 240, 236, 225, 255 })); // coda bianca
 }
 
-void DrawYatai(const Prop& p, const Paint& f, bool night) {
+void DrawYatai(const Prop& p, const Paint& f, const District& d) {
+    const bool night = d.night;
+    if (d.country != Country::Japan) { // carretto del posto: hot dog, castagne, wurstel... con la tenda a righe
+        Color cart = f({ 200, 200, 196, 255 }), stripe = f(d.accent);
+        DrawCube({ 0, 0.35f, 0 }, 0.9f, 0.4f, 0.5f, cart);
+        for (float x : { -0.3f, 0.3f }) DrawCylinderEx({ x, 0.12f, -0.27f }, { x, 0.12f, 0.27f }, 0.12f, 0.12f, 8, f({ 30, 30, 32, 255 }));
+        DrawCylinder({ 0, 0.55f, 0 }, 0.02f, 0.02f, 0.6f, 4, f({ 60, 60, 64, 255 }));
+        for (int k = 0; k < 6; ++k)
+            DrawCylinder({ 0, 1.12f, 0 }, k % 2 ? 0.55f - k * 0.08f : 0.6f - k * 0.08f, 0.0f, 0.18f, 6, k % 2 ? stripe : f(WHITE));
+        return;
+    }
     Color wood = f({ 132, 92, 56, 255 }), cloth = f({ 172, 40, 40, 255 });
     DrawCube({ 0, 0.27f, 0 }, 0.9f, 0.46f, 0.55f, wood);
     DrawCube({ 0, 0.52f, 0 }, 0.96f, 0.04f, 0.6f, f({ 170, 130, 90, 255 }));
@@ -559,7 +844,7 @@ void CityProps::Draw(const District& d, Vector3 eye, Vector2 forward) const {
         switch (p.type) {
             case PropType::Car:
             case PropType::CarHalf:      DrawCar(p, f, d.night); break;
-            case PropType::Tree:         DrawTree(p, f); break;
+            case PropType::Tree:         DrawTree(p, f, d.trees); break;
             case PropType::FallenTree:   DrawFallenTree(p, f); break;
             case PropType::Bin:          DrawBin(p, f); break;
             case PropType::Vending:      DrawVending(p, f, d.night); break;
@@ -570,7 +855,18 @@ void CityProps::Draw(const District& d, Vector3 eye, Vector2 forward) const {
             case PropType::StoneLantern: DrawStoneLantern(f); break;
             case PropType::Torii:        DrawSmallTorii(f); break;
             case PropType::Deer:         DrawDeer(p, f); break;
-            case PropType::Yatai:        DrawYatai(p, f, d.night); break;
+            case PropType::Yatai:        DrawYatai(p, f, d); break;
+            case PropType::Hydrant:      DrawHydrant(f); break;
+            case PropType::NewsBox:      DrawNewsBox(p, f); break;
+            case PropType::Scooter:      DrawScooter(p, f); break;
+            case PropType::CafeTable:    DrawCafeTable(p, f); break;
+            case PropType::PhoneBox:     DrawPhoneBox(f); break;
+            case PropType::PostBox:      DrawPostBox(f); break;
+            case PropType::Column:       DrawColumn(f); break;
+            case PropType::Fountain:     DrawFountain(f, d.country); break;
+            case PropType::Statue:       DrawStatue(f); break;
+            case PropType::MorrisColumn: DrawMorrisColumn(f); break;
+            case PropType::Snowman:      DrawSnowman(f); break;
         }
         rlPopMatrix();
     }

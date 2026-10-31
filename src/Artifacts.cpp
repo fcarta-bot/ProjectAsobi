@@ -59,6 +59,15 @@ const std::vector<Artifact>& AllArtifacts() {
           TAG_FORTUNA | TAG_ACCIAIO, [](Stats& s) { s.critChance += 0.08f; s.damage += 3; } },
         { "Shika senbei",    "Nara",      "+30 velocita', +10 vita",
           TAG_FORTUNA | TAG_VENTO,   [](Stats& s) { s.moveSpeed += 30; s.maxHp += 10; } },
+        // Rari: premi delle sfide del GameMaster
+        { "Orologio di Greenwich", "Londra", "Il tempo gira per te: scatto ogni 0.5s, +20% cadenza",
+          TAG_VENTO | TAG_ACCIAIO,   [](Stats& s) { s.dashCooldown -= 0.7f; s.fireRateMult *= 1.2f; } },
+        { "Cornicello napoletano", "Napoli", "Contro la sfortuna: +20% critico, +20% drop",
+          TAG_FORTUNA | TAG_FUOCO,   [](Stats& s) { s.critChance += 0.20f; s.dropChance += 0.2f; } },
+        { "Acchiappasogni",  "Grandi Pianure", "Trattiene gli incubi: +40 vita, 6% rubavita",
+          TAG_SPIRITO | TAG_VENTO,   [](Stats& s) { s.maxHp += 40; s.lifesteal += 0.06f; } },
+        { "Giglio d'oro",    "Firenze e Parigi", "+8 danno, +1 proiettile, +1 trapasso",
+          TAG_ACCIAIO | TAG_FORTUNA, [](Stats& s) { s.damage += 8; s.projectiles += 1; s.pierce += 1; } },
     };
     return list;
 }

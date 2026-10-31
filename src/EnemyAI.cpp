@@ -17,33 +17,10 @@ constexpr float NOTICE_NEAR = 70;    // cosi' vicino si accorge di te anche alle
 constexpr float CHARGE_SPEED = 430;  // carica dell'oni
 
 // Quanto lontano vede, quanti secondi ci mette a dimenticarti e quanto lo scoraggia la tua velocita'
-static float SightRange(EnemyType t) {
-    switch (t) {
-        case EnemyType::Goblin: return 300;
-        case EnemyType::Robot:  return 420;
-        case EnemyType::Tengu:  return 450;
-        case EnemyType::Oni:    return 480;
-    }
-    return 300;
-}
-static float MemoryTime(EnemyType t) {
-    switch (t) {
-        case EnemyType::Goblin: return 5;
-        case EnemyType::Robot:  return 9;  // la squadra si coordina: ti cerca a lungo
-        case EnemyType::Tengu:  return 6;
-        case EnemyType::Oni:    return 14; // il boss non molla facilmente
-    }
-    return 5;
-}
-static float SpeedBoredom(EnemyType t) {
-    switch (t) {
-        case EnemyType::Goblin: return 0.5f;
-        case EnemyType::Robot:  return 0.25f;
-        case EnemyType::Tengu:  return 0.4f;
-        case EnemyType::Oni:    return 0.15f;
-    }
-    return 0.5f;
-}
+// (i valori di ogni tipo sono nella tabella InfoOf, in Legends.cpp)
+static float SightRange(EnemyType t) { return InfoOf(t).sight; }
+static float MemoryTime(EnemyType t) { return std::max(0.5f, InfoOf(t).memory); }
+static float SpeedBoredom(EnemyType t) { return InfoOf(t).boredom; }
 
 // ---------------------------------------------------------------------------
 // Ciclo principale
@@ -55,6 +32,7 @@ void Game::UpdateEnemies(float dt) {
     if (Vector2Length(playerVel) > 1200) playerVel = { 0, 0 }; // teletrasporto (nuovo piano)
     prevPlayerPos = player.pos;
     nav.UpdateFlow(player.pos);
+    grossmannNear = std::max(0.0f, grossmannNear - dt * 2); // l'Uomo Alto lo rialza se e' vicino
 
     for (auto& e : enemies) {
         if (!e.alive) continue;
@@ -66,16 +44,17 @@ void Game::UpdateEnemies(float dt) {
         if (e.thinkNow) e.thinkTimer = THINK_TIME + Rand01() * 0.05f;
 
         // Chi passa vicino a un oggetto in fiamme si brucia
-        if (props.NearFire(e.pos, e.radius, 0)) {
+        if (Damageable(e) && e.z < 0.5f && props.NearFire(e.pos, e.radius, 0)) {
             e.burnTimer = 2.0f;
             e.burnDps = std::max(e.burnDps, 6.0f);
         }
-        if (e.burnTimer > 0) {
+        if (e.burnTimer > 0 && Damageable(e)) {
             e.burnTimer -= dt;
-            e.hp -= e.burnDps * dt;
+            e.hp -= e.burnDps * dt; // il fuoco ferisce tutti, anche la Bestia del Gevaudan
             if (e.hp <= 0) { KillEnemy(e); continue; }
         }
-        if (e.doom <= 0) Perceive(e, dt);
+        // Le creature neutrali (o la processione) non ti danno la caccia
+        if (e.doom <= 0 && e.hostile && !e.hidden && e.type != EnemyType::Compana && e.type != EnemyType::Dahu) Perceive(e, dt);
     }
     ShareSwarmAwareness();
     UpdateSwarms(dt);
@@ -89,11 +68,18 @@ void Game::UpdateEnemies(float dt) {
             if (e.doom <= 0) AbsorbDoomed(e);
             continue;
         }
+        if (e.stun > 0 && e.type != EnemyType::Oni) { // stordito (mazze, Tizona): resta fermo
+            e.stun -= dt;
+            e.windup = 0;
+            if (e.attack != EnemyAttack::Leap) e.attack = EnemyAttack::None;
+            continue;
+        }
         switch (e.type) {
             case EnemyType::Goblin: UpdateGoblin(e, dt); break;
             case EnemyType::Robot:  UpdateRobot(e, dt); break;
             case EnemyType::Tengu:  UpdateTengu(e, dt); break;
             case EnemyType::Oni:    UpdateOni(e, dt); break;
+            default:                UpdateLegend(e, dt); break;
         }
     }
 
@@ -102,7 +88,7 @@ void Game::UpdateEnemies(float dt) {
         for (size_t j = i + 1; j < enemies.size(); ++j) {
             Enemy& a = enemies[i];
             Enemy& b = enemies[j];
-            if (!a.alive || !b.alive) continue;
+            if (!a.alive || !b.alive || a.hidden || b.hidden || a.z > 0.5f || b.z > 0.5f) continue;
             Vector2 d = Vector2Subtract(b.pos, a.pos);
             float len = Vector2Length(d);
             float minDist = a.radius + b.radius;
@@ -130,6 +116,8 @@ void Game::Perceive(Enemy& e, float dt) {
         bool inView = dist < NOTICE_NEAR || Vector2DotProduct(e.facing, Vector2Scale(to, 1 / dist)) > VIEW_COS ||
                       (e.aggro && dist < 200);
         e.seesPlayer = dist < sight && inView && dungeon.HasLineOfSight(e.pos, player.pos);
+        // El Cuco ti trova col rumore: se stai fermo e zitto, anche vedendoti non capisce dove sei
+        if (e.type == EnemyType::Cuco && quietTime > 1.2f && dist > 110) e.seesPlayer = false;
     }
 
     // > 0 se vai piu' veloce di lui: piu' sei veloce, prima si stufa di inseguirti
@@ -380,7 +368,7 @@ void Game::EnemyShoot(const Enemy& e, Vector2 dir, float speed, float radius, fl
 
 const Enemy* Game::AwakeBoss() const {
     for (const auto& e : enemies)
-        if (e.alive && e.type == EnemyType::Oni && e.aggro) return &e;
+        if (e.alive && InfoOf(e.type).boss && e.aggro && e.hostile && !e.hidden) return &e;
     return nullptr;
 }
 
@@ -420,7 +408,7 @@ bool Game::UpdateMeleeAttack(Enemy& e, float dt) {
         e.windup -= dt;
         Face(e, to, dt);
         if (e.windup <= 0) {
-            if (dist < reach + 8 && player.z < 0.5f) DamagePlayer(e.damage);
+            if (dist < reach + 8 && player.z < 0.5f && DamagePlayer(e.damage)) HurtByLegend(e, e.damage);
             MoveWithCollision(e.pos, e.radius, Vector2Scale(Vector2Normalize(to), 6)); // lo scatto in avanti
             e.attack = EnemyAttack::None;
             e.attackTimer = 0.8f + Rand01() * 0.6f;

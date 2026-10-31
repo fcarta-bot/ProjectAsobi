@@ -18,7 +18,19 @@ enum class PropType {
     StoneLantern,   // toro di pietra (Kyoto, Nara)
     Torii,          // i mille torii di Fushimi Inari, a cavallo dei corridoi
     Deer,           // i cervi di Nara: sono sopravvissuti
-    Yatai,          // bancarella di cibo con lanterne di carta
+    Yatai,          // bancarella di cibo (in Giappone con le lanterne, altrove carretto o chiosco)
+    // Giro del mondo
+    Hydrant,        // idrante (Stati Uniti)
+    NewsBox,        // distributore di giornali (Stati Uniti)
+    Scooter,        // motorino (Italia, Spagna)
+    CafeTable,      // tavolino di un caffe' con due sedie (Italia, Parigi, Venezia)
+    PhoneBox,       // cabina telefonica rossa (Londra)
+    PostBox,        // cassetta delle lettere rossa (Londra)
+    Column,         // colonna romana spezzata, a terra (Roma)
+    Fountain,       // fontanella (il "nasone" di Roma) o vera da pozzo
+    Statue,         // statua su piedistallo (Firenze)
+    MorrisColumn,   // colonna delle affissioni (Parigi)
+    Snowman,        // pupazzo di neve (Monaco d'inverno)
 };
 
 struct Prop {

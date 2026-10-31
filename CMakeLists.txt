@@ -27,6 +27,12 @@ add_executable(ProjectAsobi
     src/Input.cpp
     src/PadRaw.cpp
     src/Touch.cpp
+    src/World.cpp
+    src/Legends.cpp
+    src/EnemyDraw.cpp
+    src/Challenges.cpp
+    src/Save.cpp
+    src/Title.cpp
     src/Props.cpp
     src/Sky.cpp
     src/Weapons.cpp

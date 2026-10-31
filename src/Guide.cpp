@@ -43,7 +43,7 @@ void Game::UpdateGuide(float dt) {
 
 void Game::DrawGuide() const {
     if (!guideActive || state != State::Playing) return;
-    const District& d = GetDistrict(floor);
+    const District& d = CurrentDistrict();
     const int sw = GetScreenWidth();
 
     // Direzione rispetto allo sguardo: in alto sullo schermo = davanti a te
