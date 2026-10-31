@@ -26,7 +26,7 @@ struct ButtonSpec {
 using L = TouchControls::Layout;
 static const ButtonSpec BUTTONS[] = {
     // In partita: azioni attorno al pollice destro, menu in alto a destra
-    { TB_ATTACK, L::Game, "ATTACCA", Icon::None,  Corner::BottomRight, -125, -135, 72, true },
+    { TB_ATTACK, L::Game, "MIRA", Icon::None,  Corner::BottomRight, -155, -170, 96, true },
     { TB_JUMP,   L::Game, "SALTA",   Icon::None,  Corner::BottomRight, -275,  -75, 48, false },
     { TB_DASH,   L::Game, "SCATTO",  Icon::None,  Corner::BottomRight, -265, -215, 48, false },
     { TB_SWAP,   L::Game, "ARMA",    Icon::None,  Corner::BottomRight, -110, -295, 40, false },
@@ -61,12 +61,19 @@ static Vector2 CenterOf(const ButtonSpec& b) {
     return { (right ? sw : 0) + b.dx * s, (bottom ? sh : 0) + b.dy * s };
 }
 
+static int AttackIndex() {
+    for (int i = 0; i < (int)(sizeof(BUTTONS) / sizeof(BUTTONS[0])); ++i)
+        if (BUTTONS[i].id == TB_ATTACK) return i;
+    return -1;
+}
+
 // Il tasto sotto il dito (con un po' di margine: le dita sono grosse), -1 se nessuno
 static int ButtonAt(Vector2 p, L layout) {
     int best = -1;
     float bestDist = 1e9f;
     for (int i = 0; i < (int)(sizeof(BUTTONS) / sizeof(BUTTONS[0])); ++i) {
         if (BUTTONS[i].layout != layout) continue;
+        if (BUTTONS[i].id == TB_ATTACK && layout == L::Game) continue; // ATTACCA e' un joystick a destra, non un tasto statico
         float d = Vector2Distance(p, CenterOf(BUTTONS[i]));
         if (d < BUTTONS[i].r * Scale() * 1.15f && d < bestDist) {
             best = i;
@@ -104,12 +111,26 @@ void TouchControls::Update() {
         }
         // Dito nuovo: decide subito a cosa serve, in base a dove si appoggia
         Finger f{ t.id, Role::None, -1, t.pos, t.pos, t.pos };
-        f.button = ButtonAt(t.pos, layout);
-        if (f.button >= 0) f.role = Role::Button;
-        else if (layout == Layout::Game) {
-            const bool stickZone = t.pos.x < GetScreenWidth() * STICK_ZONE_X && t.pos.y > GetScreenHeight() * STICK_ZONE_TOP;
-            f.role = stickZone ? Role::Stick : Role::Look;
-        } else if (layout == Layout::Tap) tapped = true;
+        if (layout == Layout::Game) {
+            int attack = AttackIndex();
+            const float attackR = BUTTONS[attack].r * Scale() * 1.25f;
+            if (attack >= 0 && Vector2Distance(t.pos, CenterOf(BUTTONS[attack])) < attackR) {
+                f.role = Role::Look;
+                f.button = attack;
+            } else {
+                f.button = ButtonAt(t.pos, layout);
+                if (f.button >= 0) f.role = Role::Button;
+                else {
+                    const bool stickZone = t.pos.x < GetScreenWidth() * STICK_ZONE_X && t.pos.y > GetScreenHeight() * STICK_ZONE_TOP;
+                    f.role = stickZone ? Role::Stick : Role::Look;
+                }
+            }
+        } else if (layout == Layout::Tap) {
+            tapped = true;
+        } else {
+            f.button = ButtonAt(t.pos, layout);
+            if (f.button >= 0) f.role = Role::Button;
+        }
         now.push_back(f);
     }
     fingers = now;
@@ -120,7 +141,7 @@ void TouchControls::Update() {
             const ButtonSpec& b = BUTTONS[f.button];
             down[b.id] = true;
             // Se il dito resta sul tasto ATTACCA ma si trascina troppo, passa in mira libera,
-            // cosi' i touch del tablet diventano più naturali e non restano “bloccati” sul bottone.
+            // cosi' i touch del tablet diventano più naturali e non restano "bloccati" sul bottone.
             if (b.look && Vector2Length(Vector2Subtract(f.pos, f.start)) > LOOK_DRAG_SLOP) {
                 f.role = Role::Look;
                 down[b.id] = true;
@@ -140,8 +161,8 @@ void TouchControls::Update() {
             }
             move = len < 0.15f ? Vector2{ 0, 0 } : d;
         } else if (f.role == Role::Look) {
-            if (f.button >= 0 && f.button < (int)(sizeof(BUTTONS) / sizeof(BUTTONS[0])) && BUTTONS[f.button].look)
-                down[BUTTONS[f.button].id] = true;
+            int idx = f.button >= 0 ? f.button : AttackIndex();
+            if (idx >= 0 && BUTTONS[idx].id == TB_ATTACK) down[TB_ATTACK] = true;
             lookDx += f.pos.x - f.last.x;
         }
         f.last = f.pos;
@@ -196,4 +217,23 @@ void TouchControls::Draw() const {
     DrawCircleV(base, STICK_RADIUS * s, Fade(BLACK, 0.25f));
     DrawRing(base, STICK_RADIUS * s - 2.5f * s, STICK_RADIUS * s, 0, 360, 48, Fade(WHITE, 0.4f));
     DrawCircleV(knob, 34 * s, Fade(WHITE, 0.45f));
+
+    // Zona di mira: grande e alta a destra, come un joystick di tiro.
+    int attack = AttackIndex();
+    if (attack >= 0) {
+        Vector2 center = CenterOf(BUTTONS[attack]);
+        float ring = BUTTONS[attack].r * s;
+        for (const Finger& f : fingers) {
+            if (f.button == attack && f.role == Role::Look) {
+                Vector2 v = Vector2Subtract(f.pos, center);
+                float len = Vector2Length(v);
+                len = std::min(len, ring * 0.9f);
+                Vector2 knobPos = Vector2Add(center, Vector2Scale(Vector2Normalize(v), len));
+                DrawCircleV(center, ring, Fade(BLACK, 0.22f));
+                DrawRing(center, ring - 3.0f * s, ring, 0, 360, 48, Fade(WHITE, 0.5f));
+                DrawCircleV(knobPos, 16 * s, Fade(GOLD, 0.9f));
+                break;
+            }
+        }
+    }
 }
