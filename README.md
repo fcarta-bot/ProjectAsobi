@@ -75,8 +75,8 @@ Con il touch l'inventario non e' in basso (li' ci sono i comandi): si vede nel m
 **Modifica comandi touch**: si trascina un comando per spostarlo e toccandolo lo si sceglie. Nel pannello:
 grandezza (tutti i comandi, anche BORSA e pausa in alto), sensibilita' (i due stick) e stick **fisso**
 (sta dove l'hai messo) o **mobile** (parte da dove appoggi il dito nella sua meta' di schermo).
-C'e' anche la sensibilita' della **visuale libera**. Lo schermo e' diviso a meta': dove non ci sono
-comandi (e lo stick di quella meta' e' fisso) trascinare sposta la visuale senza sparare.
+C'e' anche la sensibilita' della **visuale libera**: dove non ci sono comandi trascinare sposta la
+visuale senza sparare (uno stick mobile invece compare dove si appoggia il dito, dal suo lato dello schermo).
 **Ripristina** rimette tutto com'era, **Fatto** salva nel profilo (riga `touch=`).
 La disposizione di partenza sta nella tabella `CTL` in `src/Touch.cpp`, quella dei menu in `BUTTONS`.
 

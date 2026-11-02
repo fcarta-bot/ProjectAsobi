@@ -467,15 +467,6 @@ void TouchControls::UpdateEditor() {
 
 void TouchControls::DrawEditor() const {
     const float s = Scale(), sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
-    // Le due meta' dello schermo: dove non ci sono comandi il dito sposta la visuale
-    for (float y = 0; y < sh; y += 24 * s) DrawRectangle((int)(sw / 2 - 1), (int)y, 2, (int)(12 * s), Fade(WHITE, 0.25f));
-    const auto& m = setup.ctl[TC_MOVE];
-    const auto& a = setup.ctl[TC_AIM];
-    const int hint = (int)(16 * s);
-    DrawText(m.floating ? "Fuori dai tasti: stick per muoversi" : "Fuori dai tasti: visuale", (int)(20 * s), (int)(sh / 2), hint, Fade(WHITE, 0.4f));
-    const char* right = a.floating ? "Fuori dai tasti: stick di tiro" : "Fuori dai tasti: visuale";
-    DrawText(right, (int)(sw - 20 * s - MeasureText(right, hint)), (int)(sh / 2), hint, Fade(WHITE, 0.4f));
-
     DrawControls(true);
     // Il comando scelto: anello dorato
     const Vector2 sc = CtlCenter(selected);
