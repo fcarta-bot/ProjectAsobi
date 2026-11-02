@@ -95,6 +95,7 @@ void Game::LoadProfile() {
     profile.tips = Num(m, "consigli", 1) != 0;
     profile.bestFloor = (int)Num(m, "piano_record");
     profile.victories = (int)Num(m, "vittorie");
+    if (m.count("touch")) input.Touch().LoadSetup(m["touch"]);
     for (int i = 0; i < SAVE_SLOTS; ++i) slotInfo[i] = ReadSlotInfo(i);
 }
 
@@ -104,7 +105,8 @@ void Game::SaveProfile() const {
       << "sensibilita=" << profile.lookSensitivity << "\n"
       << "consigli=" << (profile.tips ? 1 : 0) << "\n"
       << "piano_record=" << profile.bestFloor << "\n"
-      << "vittorie=" << profile.victories << "\n";
+      << "vittorie=" << profile.victories << "\n"
+      << "touch=" << input.Touch().SaveSetup() << "\n";
     StorageWrite("profilo", o.str());
 }
 

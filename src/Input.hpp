@@ -24,7 +24,9 @@ public:
     // Touch: l'ultimo dispositivo usato e' lo schermo (iPad). Il gioco dice quali tasti mostrare
     bool UsingTouch() const { return usingTouch; }
     void SetTouchLayout(TouchControls::Layout l) { touch.SetLayout(l); }
-    float TouchLook() const { return usingTouch ? touch.LookDelta() : 0.0f; } // pixel trascinati per girarsi
+    Vector2 TouchLook() const { return usingTouch ? touch.LookDelta() : Vector2{ 0, 0 }; } // visuale libera: pixel trascinati
+    TouchControls& Touch() { return touch; } // per l'editor dei comandi e il salvataggio
+    const TouchControls& Touch() const { return touch; }
     float PitchAxis() const { return usingTouch ? touch.AimPitch() : 0.0f; }  // -1 giu' ... +1 su (stick di tiro)
     void DrawTouch() const { if (usingTouch) touch.Draw(); }
 

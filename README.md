@@ -62,15 +62,23 @@ Appena si tocca lo schermo compaiono i comandi touch. Spariscono se si usa la ta
 | Azione | Come |
 |---|---|
 | Muoviti | Appoggia il dito nella meta' sinistra e trascinalo (stick virtuale) |
-| Attacca e mira | Stick di tiro: appoggia il pollice nella meta' destra, fuori dai tasti (parte da dove lo appoggi). Finche' e' appoggiato spari; spostandolo la visuale si gira a destra e a sinistra e guarda in alto e in basso, col mirino sempre al centro. Piccoli spostamenti = mira precisa, tutto di lato = giro veloce |
-| Girati senza sparare | Con lo stick di tiro gia' preso, trascina un secondo dito a destra |
+| Attacca e mira | Stick di tiro **ATTACCA**: finche' il pollice e' appoggiato spari; spostandolo la visuale gira a destra e a sinistra e guarda in alto e in basso, col mirino sempre al centro. Piccoli spostamenti = mira precisa, tutto di lato = giro veloce |
+| Girati senza sparare | Trascina il dito dove non ci sono comandi (sensibilita' alta: basta un angolino) |
+| Sistemare i comandi | **Modifica comandi touch** (impostazioni del menu iniziale o menu di pausa) |
 | Salta / scatto / cambia arma / raccogli | **SALTA**, **SCATTO**, **ARMA**, **PRENDI** |
 | Menu di partita / menu di gioco | **BORSA** e il tasto pausa, in alto a destra |
 | Nei menu | Frecce a sinistra, **OK** e **INDIETRO** a destra |
 | Nelle animazioni | Tocca ovunque per andare avanti, **SALTA** per saltarle |
 
 Con il touch l'inventario non e' in basso (li' ci sono i comandi): si vede nel menu **BORSA**.
-La disposizione dei tasti sta tutta nella tabella `BUTTONS` in `src/Touch.cpp`.
+
+**Modifica comandi touch**: si trascina un comando per spostarlo e toccandolo lo si sceglie. Nel pannello:
+grandezza (tutti i comandi, anche BORSA e pausa in alto), sensibilita' (i due stick) e stick **fisso**
+(sta dove l'hai messo) o **mobile** (parte da dove appoggi il dito nella sua meta' di schermo).
+C'e' anche la sensibilita' della **visuale libera**. Lo schermo e' diviso a meta': dove non ci sono
+comandi (e lo stick di quella meta' e' fisso) trascinare sposta la visuale senza sparare.
+**Ripristina** rimette tutto com'era, **Fatto** salva nel profilo (riga `touch=`).
+La disposizione di partenza sta nella tabella `CTL` in `src/Touch.cpp`, quella dei menu in `BUTTONS`.
 
 ### Il menu di partita
 
@@ -286,7 +294,7 @@ La ricerca e l'abbinamento stanno in `src/link/`, con un'implementazione per pia
 | `src/Artifacts.hpp/.cpp` | Artefatti, sinergie e calcolo delle statistiche |
 | `src/Input.hpp/.cpp` | Tastiera, mouse e joystick (collegamento, zona morta, comandi, nomi dei tasti) |
 | `src/PadRaw.hpp/.cpp` | Input che raylib non vede o non legge bene: touchpad PlayStation (GLFW o browser), dita sullo schermo |
-| `src/Touch.hpp/.cpp` | Comandi touch: stick per muoversi, stick di tiro, trascinare per girarsi, tasti a schermo (tabella `BUTTONS`) |
+| `src/Touch.hpp/.cpp` | Comandi touch: stick per muoversi, stick di tiro, visuale libera, tasti a schermo (tabelle `CTL` e `BUTTONS`) ed editor dei comandi |
 | `src/PauseMenu.cpp` | Menu di gioco (pausa) e pagina dei comandi |
 | `src/MatchMenu.cpp` | Menu di partita: inventario, armi, mappa esplorata, statistiche della run |
 | `src/Guide.cpp` | Freccia che indica la strada per il torii quando ti perdi |

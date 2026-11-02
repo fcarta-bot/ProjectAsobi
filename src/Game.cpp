@@ -13,7 +13,7 @@ constexpr float EYE_HEIGHT = 0.6f;     // altezza degli occhi sopra i piedi, in 
 constexpr float BASE_FOV = 75.0f;      // campo visivo verticale in gradi
 constexpr float TURN_SPEED = 3.0f;     // radianti al secondo con stick o frecce
 constexpr float MOUSE_TURN = 0.0025f;  // radianti per pixel di mouse
-constexpr float TOUCH_TURN = 0.005f;   // radianti per pixel trascinato sullo schermo touch
+constexpr float TOUCH_TURN = 0.005f;   // radianti per pixel trascinato sulla visuale libera (per la sensibilita' dell'editor)
 constexpr float GRAVITY = 22.0f;       // caselle al secondo quadrato
 constexpr float JUMP_SPEED = 7.0f;     // basta per saltare su un'auto (circa 1.1 caselle)
 constexpr float PLAYER_SHOT_H = 0.45f; // altezza dei colpi sopra i piedi
@@ -281,6 +281,13 @@ void Game::Update(float dt) {
                            (state == State::Title && titleTime < TitleScene::MENU) ? TouchControls::Layout::Tap
                                                                             : TouchControls::Layout::Menu);
     input.Update();
+    // Editor dei comandi touch: finche' e' aperto il gioco aspetta; con "Fatto" si salva
+    if (input.Touch().Editing()) return;
+    if (input.Touch().TakeEditDone()) {
+        SaveProfile();
+        ShowToast("Comandi salvati");
+        return;
+    }
     link->Update();
     toastTimer -= dt;
     bannerTimer -= dt;
@@ -399,11 +406,12 @@ void Game::UpdatePlayer(float dt) {
     // Girarsi: mouse (catturato) oppure stick destro / frecce
     float turn = input.TurnAxis() * TURN_SPEED * dt;
     if (cursorLocked && !skipMouseDelta) turn += GetMouseDelta().x * MOUSE_TURN * profile.lookSensitivity;
-    turn += input.TouchLook() * TOUCH_TURN * profile.lookSensitivity;
+    turn += input.TouchLook().x * TOUCH_TURN;
     skipMouseDelta = false;
     player.yaw = fmodf(player.yaw + turn, 2 * PI);
     player.aim = { cosf(player.yaw), sinf(player.yaw) };
-    player.pitch = std::clamp(player.pitch + input.PitchAxis() * PITCH_SPEED * dt, -MAX_PITCH, MAX_PITCH);
+    player.pitch = std::clamp(player.pitch + input.PitchAxis() * PITCH_SPEED * dt - input.TouchLook().y * TOUCH_TURN,
+                              -MAX_PITCH, MAX_PITCH);
 
     // Il movimento e' relativo allo sguardo: avanti, indietro e passi laterali
     const Vector2 right{ -player.aim.y, player.aim.x };
@@ -909,6 +917,11 @@ void Game::AddPlayerText(const std::string& text, Color color) {
 // ---------------------------------------------------------------------------
 
 void Game::Draw() {
+    if (input.Touch().Editing()) {
+        ClearBackground({ 22, 24, 34, 255 });
+        input.Touch().DrawEditor();
+        return;
+    }
     bool overTitle = state == State::ControllerMenu && menuReturnState == State::Title;
     if (state == State::Title || overTitle) {
         ClearBackground(BLACK);

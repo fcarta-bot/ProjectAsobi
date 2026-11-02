@@ -14,14 +14,15 @@ static constexpr bool WEB = false;
 #endif
 
 enum { MAIN_NEW, MAIN_LOAD, MAIN_SETTINGS, MAIN_QUIT, MAIN_COUNT };
-enum { SET_CONTROLLER, SET_CONTROLS, SET_FULLSCREEN, SET_SENSITIVITY, SET_TIPS, SET_TITLES, SET_BACK, SET_COUNT };
+enum { SET_CONTROLLER, SET_CONTROLS, SET_TOUCH, SET_FULLSCREEN, SET_SENSITIVITY, SET_TIPS, SET_TITLES, SET_BACK, SET_COUNT };
 
 static int MainCount() { return WEB ? MAIN_COUNT - 1 : MAIN_COUNT; }
-static int SettingsItem(int index) { // nel browser la voce "schermo intero" non c'e'
+static int SettingsItem(int index) { // nel browser niente "schermo intero"; su PC niente editor touch
     if (WEB && index >= SET_FULLSCREEN) return index + 1;
+    if (!WEB && index >= SET_TOUCH) return index + 1;
     return index;
 }
-static int SettingsCount() { return WEB ? SET_COUNT - 1 : SET_COUNT; }
+static int SettingsCount() { return SET_COUNT - 1; } // una voce in meno in entrambi i casi
 
 void Game::OpenTitle() {
     static bool firstTime = true;
@@ -111,7 +112,7 @@ void Game::UpdateTitle(float dt) {
             UpdateSettings();
             return;
         case TitlePage::Titles:
-            if (input.BackPressed() || input.ConfirmPressed()) { titlePage = TitlePage::Settings; titleIndex = SET_TITLES - (WEB ? 1 : 0); }
+            if (input.BackPressed() || input.ConfirmPressed()) { titlePage = TitlePage::Settings; titleIndex = SET_TITLES - 1; }
             return;
     }
 }
@@ -132,6 +133,7 @@ void Game::UpdateSettings() {
     switch (item) {
         case SET_CONTROLLER: OpenControllerMenu(""); break;
         case SET_CONTROLS: pauseShowControls = true; break;
+        case SET_TOUCH: input.Touch().StartEditing(); break;
         case SET_FULLSCREEN: ToggleFullscreenMode(); break;
         case SET_SENSITIVITY:
             profile.lookSensitivity = profile.lookSensitivity >= 2.45f ? 0.4f : profile.lookSensitivity + 0.1f;
@@ -153,6 +155,7 @@ void Game::DrawSettings(Rectangle area) const {
         switch (item) {
             case SET_CONTROLLER: label = "Controller e joystick"; break;
             case SET_CONTROLS: label = "Comandi"; break;
+            case SET_TOUCH: label = "Modifica comandi touch"; break;
             case SET_FULLSCREEN:
                 label = "Schermo intero";
                 status = IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE) ? "SI" : "NO";

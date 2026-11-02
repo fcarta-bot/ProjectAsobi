@@ -4,11 +4,11 @@
 #include "Game.hpp"
 #include "Ui.hpp"
 
-enum { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_SAVE_QUIT, PAUSE_QUIT, PAUSE_COUNT };
+enum { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_TOUCH, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_SAVE_QUIT, PAUSE_QUIT, PAUSE_COUNT };
 
 // Nel browser (iPad) schermo intero e uscita li gestisce la pagina web: quelle voci non ci sono
 #if defined(__EMSCRIPTEN__)
-static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_NEW_RUN, PAUSE_SAVE_QUIT };
+static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_TOUCH, PAUSE_NEW_RUN, PAUSE_SAVE_QUIT };
 #else
 static const int PAUSE_ITEMS[] = { PAUSE_RESUME, PAUSE_CONTROLLER, PAUSE_CONTROLS, PAUSE_FULLSCREEN, PAUSE_NEW_RUN, PAUSE_SAVE_QUIT, PAUSE_QUIT };
 #endif
@@ -55,6 +55,7 @@ void Game::UpdatePause() {
         case PAUSE_RESUME:     state = pauseReturnState; break;
         case PAUSE_CONTROLLER: OpenControllerMenu(""); break; // chiudendolo si torna qui
         case PAUSE_CONTROLS:   pauseShowControls = true; break;
+        case PAUSE_TOUCH:      input.Touch().StartEditing(); break; // con "Fatto" si torna qui
         case PAUSE_FULLSCREEN: ToggleFullscreenMode(); break;
         case PAUSE_NEW_RUN:    NewRun(); break;
         case PAUSE_SAVE_QUIT:  if (pauseReturnState == State::GameOver) OpenTitle(); else SaveAndQuitToTitle(); break;
@@ -76,8 +77,8 @@ void Game::DrawControlsPage() const {
     struct Row { const char* action; std::string keyboard; std::string joystick; std::string touch; };
     const Row rows[] = {
         { "Muoviti", "WASD / frecce su e giu'", "Stick sinistro", "Trascina a sinistra" },
-        { "Girati", "Mouse / frecce sx e dx", "Stick destro", "Stick a destra" },
-        { "Attacca", "Click sinistro", std::string(b(GAMEPAD_BUTTON_RIGHT_TRIGGER_2)) + " o " + b(GAMEPAD_BUTTON_RIGHT_TRIGGER_1), "Stick a destra (tienilo)" },
+        { "Girati", "Mouse / frecce sx e dx", "Stick destro", "Trascina fuori dai tasti" },
+        { "Attacca", "Click sinistro", std::string(b(GAMEPAD_BUTTON_RIGHT_TRIGGER_2)) + " o " + b(GAMEPAD_BUTTON_RIGHT_TRIGGER_1), "Stick ATTACCA (tienilo)" },
         { "Salta", "Spazio", b(GAMEPAD_BUTTON_RIGHT_FACE_DOWN), "SALTA" },
         { "Scatto", "Shift", std::string("Frecce o ") + b(GAMEPAD_BUTTON_LEFT_TRIGGER_1), "SCATTO" },
         { "Raccogli / torii", "E", b(GAMEPAD_BUTTON_RIGHT_FACE_LEFT), "PRENDI" },
@@ -119,6 +120,7 @@ void Game::DrawPause() const {
         { "Riprendi", nullptr },
         { "Controller e joystick", "Collega un joystick (Bluetooth, cavo, pennetta) e prova i tasti" },
         { "Comandi", "Tutti i tasti: tastiera, joystick e touch" },
+        { "Modifica comandi touch", "Sposta e ingrandisci i tasti, sensibilita', stick fissi o mobili" },
         { "Schermo intero", "In qualsiasi momento anche con F11 o Alt+Invio" },
         { "Ricomincia la run", "Si riparte dal primo piano, con un nuovo giro del mondo" },
         { "Salva e torna al menu", nullptr },
