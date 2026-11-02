@@ -2,8 +2,8 @@
 #include <vector>
 #include "raylib.h"
 
-// Comandi a schermo per iPad e telefoni: stick virtuale a sinistra, trascinare a destra per girarsi,
-// tasti rotondi per le azioni. La disposizione dei tasti sta tutta nella tabella in Touch.cpp.
+// Comandi a schermo per iPad e telefoni: stick per muoversi a sinistra, stick di tiro a destra
+// (spara e, spinto di lato, gira), trascinare altrove a destra per girarsi, tasti rotondi per le azioni. La disposizione dei tasti sta tutta nella tabella in Touch.cpp.
 enum TouchButton {
     TB_ATTACK, TB_JUMP, TB_DASH, TB_SWAP, TB_USE, TB_MATCH, TB_PAUSE, // in partita
     TB_UP, TB_DOWN, TB_LEFT, TB_RIGHT, TB_OK, TB_BACK,                // nei menu
@@ -26,9 +26,10 @@ public:
     bool Tapped() const { return tapped; }     // dito appoggiato fuori dai tasti (layout Tap)
     Vector2 Move() const { return move; }      // come Input::Move: x laterale, y avanti (-) / indietro (+)
     float LookDelta() const { return lookDx; } // pixel trascinati in orizzontale in questo frame
+    float AimTurn() const { return aimTurn; }  // stick di tiro: -1 tutto a sinistra ... +1 tutto a destra
 
 private:
-    enum class Role { None, Button, Stick, Look };
+    enum class Role { None, Button, Stick, Aim, Look };
     struct Finger { int id; Role role; int button; Vector2 start, last, pos; };
 
     Layout layout = Layout::Game;
@@ -37,4 +38,6 @@ private:
     bool tapped = false;
     Vector2 move{ 0, 0 };
     float lookDx = 0;
+    float aimTurn = 0;
+    Vector2 aimVec{ 0, 0 }; // spinta dello stick di tiro (per disegnarlo)
 };

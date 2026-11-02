@@ -1,0 +1,33 @@
+# Compila la versione browser (iPad) e la pubblica sul ramo gh-pages (GitHub Pages)
+# ogni volta che si salva qualcosa sul ramo ipad-web. Si puo' anche avviare a mano da "Actions".
+name: Versione web
+
+on:
+  push:
+    branches: [ipad-web]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+      - name: Compila con Emscripten
+        run: |
+          emcmake cmake -S . -B build-web -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-web --target ProjectAsobi -j4
+      - name: Prepara i file del sito
+        run: |
+          mkdir sito
+          cp build-web/index.html build-web/index.js build-web/index.wasm sito/
+          touch sito/.nojekyll
+      - name: Pubblica su gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./sito
+          force_orphan: true

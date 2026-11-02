@@ -114,6 +114,7 @@ Vector2 Input::Move() const {
 
 float Input::TurnAxis() const {
     float turn = Stick(GAMEPAD_AXIS_RIGHT_X, GAMEPAD_AXIS_RIGHT_Y).x;
+    if (usingTouch) turn += touch.AimTurn(); // stick di tiro a schermo
     if (IsKeyDown(KEY_LEFT)) turn -= 1;
     if (IsKeyDown(KEY_RIGHT)) turn += 1;
     return std::clamp(turn, -1.0f, 1.0f);

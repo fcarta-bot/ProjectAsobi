@@ -62,8 +62,8 @@ Appena si tocca lo schermo compaiono i comandi touch. Spariscono se si usa la ta
 | Azione | Come |
 |---|---|
 | Muoviti | Appoggia il dito nella meta' sinistra e trascinalo (stick virtuale) |
-| Girati | Trascina il dito nella meta' destra |
-| Attacca | Tieni premuto **ATTACCA**. Trascinandolo ti giri, cosi' attacchi e miri insieme |
+| Attacca e girati | Stick di tiro **ATTACCA** in basso a destra: finche' il dito e' appoggiato si spara; spinto a destra o a sinistra ti giri (tutto di lato = alla massima velocita'), su e giu' non fanno niente |
+| Girati senza sparare | Trascina il dito nella meta' destra, fuori dai tasti |
 | Salta / scatto / cambia arma / raccogli | **SALTA**, **SCATTO**, **ARMA**, **PRENDI** |
 | Menu di partita / menu di gioco | **BORSA** e il tasto pausa, in alto a destra |
 | Nei menu | Frecce a sinistra, **OK** e **INDIETRO** a destra |
@@ -286,7 +286,7 @@ La ricerca e l'abbinamento stanno in `src/link/`, con un'implementazione per pia
 | `src/Artifacts.hpp/.cpp` | Artefatti, sinergie e calcolo delle statistiche |
 | `src/Input.hpp/.cpp` | Tastiera, mouse e joystick (collegamento, zona morta, comandi, nomi dei tasti) |
 | `src/PadRaw.hpp/.cpp` | Input che raylib non vede o non legge bene: touchpad PlayStation (GLFW o browser), dita sullo schermo |
-| `src/Touch.hpp/.cpp` | Comandi touch: stick virtuale, trascinare per girarsi, tasti a schermo (tabella `BUTTONS`) |
+| `src/Touch.hpp/.cpp` | Comandi touch: stick per muoversi, stick di tiro, trascinare per girarsi, tasti a schermo (tabella `BUTTONS`) |
 | `src/PauseMenu.cpp` | Menu di gioco (pausa) e pagina dei comandi |
 | `src/MatchMenu.cpp` | Menu di partita: inventario, armi, mappa esplorata, statistiche della run |
 | `src/Guide.cpp` | Freccia che indica la strada per il torii quando ti perdi |
@@ -322,6 +322,9 @@ diventa un'icona che si apre a tutto schermo, come un'app.
 3. In `build-web/` trovi `index.html`, `index.js` e `index.wasm`: vanno messi su un sito
    (ad esempio GitHub Pages o itch.io). Aprire `index.html` con doppio clic non funziona,
    perche' il browser vuole un indirizzo web.
+
+Non serve farlo a mano: a ogni salvataggio sul ramo `ipad-web` GitHub compila da solo la versione
+web e la pubblica sul ramo `gh-pages` (il sito). Lo fa `.github/workflows/web.yml`; si vede in **Actions**.
 
 Nel browser il menu di gioco non ha "Schermo intero" ne' "Esci": li gestisce la pagina.
 L'iPad va tenuto in orizzontale. Va bene anche un joystick abbinato all'iPad via Bluetooth.

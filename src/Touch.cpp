@@ -20,34 +20,35 @@ struct ButtonSpec {
     Icon icon;
     Corner corner;
     float dx, dy, r;
-    bool look; // trascinando il dito sul tasto ci si gira anche (per attaccare e mirare insieme)
 };
 
 using L = TouchControls::Layout;
 static const ButtonSpec BUTTONS[] = {
     // In partita: azioni attorno al pollice destro, menu in alto a destra
-    { TB_ATTACK, L::Game, "MIRA", Icon::None,  Corner::BottomRight, -155, -170, 96, true },
-    { TB_JUMP,   L::Game, "SALTA",   Icon::None,  Corner::BottomRight, -275,  -75, 48, false },
-    { TB_DASH,   L::Game, "SCATTO",  Icon::None,  Corner::BottomRight, -265, -215, 48, false },
-    { TB_SWAP,   L::Game, "ARMA",    Icon::None,  Corner::BottomRight, -110, -295, 40, false },
-    { TB_USE,    L::Game, "PRENDI",  Icon::None,  Corner::BottomRight, -400,  -70, 42, false },
-    { TB_MATCH,  L::Game, "BORSA",   Icon::None,  Corner::TopRight,    -150,   48, 36, false },
-    { TB_PAUSE,  L::Game, "",        Icon::Pause, Corner::TopRight,     -60,   48, 36, false },
+    // ATTACCA non e' un tasto ma il secondo stick (vedi AIM_*): qui c'e' solo dove si disegna a riposo
+    { TB_ATTACK, L::Game, "ATTACCA", Icon::None,  Corner::BottomRight, -155, -170, 80 },
+    { TB_JUMP,   L::Game, "SALTA",   Icon::None,  Corner::BottomRight, -275,  -75, 48 },
+    { TB_DASH,   L::Game, "SCATTO",  Icon::None,  Corner::BottomRight, -285, -235, 48 },
+    { TB_SWAP,   L::Game, "ARMA",    Icon::None,  Corner::BottomRight, -110, -295, 40 },
+    { TB_USE,    L::Game, "PRENDI",  Icon::None,  Corner::BottomRight, -400,  -70, 42 },
+    { TB_MATCH,  L::Game, "BORSA",   Icon::None,  Corner::TopRight,    -150,   48, 36 },
+    { TB_PAUSE,  L::Game, "",        Icon::Pause, Corner::TopRight,     -60,   48, 36 },
     // Nei menu: frecce a sinistra, OK e Indietro a destra
-    { TB_UP,     L::Menu, "", Icon::Up,    Corner::BottomLeft,  105, -180, 38, false },
-    { TB_DOWN,   L::Menu, "", Icon::Down,  Corner::BottomLeft,  105,  -56, 38, false },
-    { TB_LEFT,   L::Menu, "", Icon::Left,  Corner::BottomLeft,   43, -118, 38, false },
-    { TB_RIGHT,  L::Menu, "", Icon::Right, Corner::BottomLeft,  167, -118, 38, false },
-    { TB_OK,     L::Menu, "OK",       Icon::None, Corner::BottomRight, -95,  -105, 54, false },
-    { TB_BACK,   L::Menu, "INDIETRO", Icon::None, Corner::BottomRight, -225,  -56, 42, false },
+    { TB_UP,     L::Menu, "", Icon::Up,    Corner::BottomLeft,  105, -180, 38 },
+    { TB_DOWN,   L::Menu, "", Icon::Down,  Corner::BottomLeft,  105,  -56, 38 },
+    { TB_LEFT,   L::Menu, "", Icon::Left,  Corner::BottomLeft,   43, -118, 38 },
+    { TB_RIGHT,  L::Menu, "", Icon::Right, Corner::BottomLeft,  167, -118, 38 },
+    { TB_OK,     L::Menu, "OK",       Icon::None, Corner::BottomRight, -95,  -105, 54 },
+    { TB_BACK,   L::Menu, "INDIETRO", Icon::None, Corner::BottomRight, -225,  -56, 42 },
     // Nelle animazioni si tocca ovunque per andare avanti; questo salta tutto
-    { TB_SKIP,   L::Tap,  "SALTA",    Icon::None, Corner::TopRight,     -70,   56, 40, false },
+    { TB_SKIP,   L::Tap,  "SALTA",    Icon::None, Corner::TopRight,     -70,   56, 40 },
 };
 
 constexpr float STICK_RADIUS = 80;        // quanto spostare il dito per correre al massimo
 constexpr float STICK_ZONE_X = 0.45f;     // lo stick si appoggia nella parte sinistra dello schermo...
 constexpr float STICK_ZONE_TOP = 0.25f;   // ...sotto questa quota (sopra ci sono vita e armi)
-constexpr float LOOK_DRAG_SLOP = 18.0f;    // se il dito lascia il tasto ATTACCA oltre questa soglia, passa in mira libera
+constexpr float AIM_GRAB = 1.3f;          // lo stick di tiro si prende entro 1,3 raggi dal suo posto
+constexpr float AIM_DEAD = 0.2f;          // sotto questa spinta laterale non ci si gira (si spara e basta)
 constexpr Vector2 STICK_HOME{ 160, -170 }; // dove si disegna lo stick a riposo (dall'angolo in basso a sinistra)
 
 static float Scale() {
@@ -73,7 +74,7 @@ static int ButtonAt(Vector2 p, L layout) {
     float bestDist = 1e9f;
     for (int i = 0; i < (int)(sizeof(BUTTONS) / sizeof(BUTTONS[0])); ++i) {
         if (BUTTONS[i].layout != layout) continue;
-        if (BUTTONS[i].id == TB_ATTACK && layout == L::Game) continue; // ATTACCA e' un joystick a destra, non un tasto statico
+        if (BUTTONS[i].id == TB_ATTACK) continue; // ATTACCA e' lo stick di tiro, non un tasto
         float d = Vector2Distance(p, CenterOf(BUTTONS[i]));
         if (d < BUTTONS[i].r * Scale() * 1.15f && d < bestDist) {
             best = i;
@@ -96,6 +97,8 @@ void TouchControls::Update() {
     tapped = false;
     move = { 0, 0 };
     lookDx = 0;
+    aimTurn = 0;
+    aimVec = { 0, 0 };
 
     // Allinea l'elenco delle dita con quelle appoggiate adesso
     const int count = RawTouchCount();
@@ -112,57 +115,51 @@ void TouchControls::Update() {
         // Dito nuovo: decide subito a cosa serve, in base a dove si appoggia
         Finger f{ t.id, Role::None, -1, t.pos, t.pos, t.pos };
         if (layout == Layout::Game) {
-            int attack = AttackIndex();
-            const float attackR = BUTTONS[attack].r * Scale() * 1.25f;
-            if (attack >= 0 && Vector2Distance(t.pos, CenterOf(BUTTONS[attack])) < attackR) {
-                f.role = Role::Look;
-                f.button = attack;
+            const int attack = AttackIndex();
+            const bool aimFree = std::none_of(fingers.begin(), fingers.end(), [](const Finger& o) { return o.role == Role::Aim; });
+            if ((f.button = ButtonAt(t.pos, layout)) >= 0) {
+                f.role = Role::Button; // i tasti vicini hanno la precedenza sul bordo dello stick
+            } else if (aimFree && Vector2Distance(t.pos, CenterOf(BUTTONS[attack])) < BUTTONS[attack].r * Scale() * AIM_GRAB) {
+                f.role = Role::Aim; // stick di tiro: parte da dove si appoggia il dito, come quello sinistro
             } else {
-                f.button = ButtonAt(t.pos, layout);
-                if (f.button >= 0) f.role = Role::Button;
-                else {
-                    const bool stickZone = t.pos.x < GetScreenWidth() * STICK_ZONE_X && t.pos.y > GetScreenHeight() * STICK_ZONE_TOP;
-                    f.role = stickZone ? Role::Stick : Role::Look;
-                }
+                const bool stickZone = t.pos.x < GetScreenWidth() * STICK_ZONE_X && t.pos.y > GetScreenHeight() * STICK_ZONE_TOP;
+                f.role = stickZone ? Role::Stick : Role::Look;
             }
         } else if (layout == Layout::Tap) {
             tapped = true;
-        } else {
-            f.button = ButtonAt(t.pos, layout);
-            if (f.button >= 0) f.role = Role::Button;
+        } else if ((f.button = ButtonAt(t.pos, layout)) >= 0) {
+            f.role = Role::Button;
         }
         now.push_back(f);
     }
     fingers = now;
 
     const float s = Scale();
+    // Spinta di uno stick: da dove si e' appoggiato il dito a dove e' adesso, lunga al massimo 1.
+    // Se il dito va oltre il bordo lo stick lo "segue", cosi' tornare indietro e' immediato
+    auto stickVector = [s](Finger& f) {
+        Vector2 d = Vector2Scale(Vector2Subtract(f.pos, f.start), 1.0f / (STICK_RADIUS * s));
+        float len = Vector2Length(d);
+        if (len > 1) {
+            f.start = Vector2Add(f.start, Vector2Scale(d, (len - 1) / len * STICK_RADIUS * s));
+            d = Vector2Scale(d, 1 / len);
+        }
+        return d;
+    };
     for (Finger& f : fingers) {
         if (f.role == Role::Button) {
-            const ButtonSpec& b = BUTTONS[f.button];
-            down[b.id] = true;
-            // Se il dito resta sul tasto ATTACCA ma si trascina troppo, passa in mira libera,
-            // cosi' i touch del tablet diventano più naturali e non restano "bloccati" sul bottone.
-            if (b.look && Vector2Length(Vector2Subtract(f.pos, f.start)) > LOOK_DRAG_SLOP) {
-                f.role = Role::Look;
-                down[b.id] = true;
-            }
-        }
-        if (f.role == Role::Button) {
-            const ButtonSpec& b = BUTTONS[f.button];
-            down[b.id] = true;
-            if (b.look) lookDx += f.pos.x - f.last.x;
+            down[BUTTONS[f.button].id] = true;
         } else if (f.role == Role::Stick) {
-            Vector2 d = Vector2Scale(Vector2Subtract(f.pos, f.start), 1.0f / (STICK_RADIUS * s));
-            float len = Vector2Length(d);
-            if (len > 1) {
-                // Lo stick "segue" il dito se va oltre il bordo, cosi' tornare indietro e' immediato
-                f.start = Vector2Add(f.start, Vector2Scale(d, (len - 1) / len * STICK_RADIUS * s));
-                d = Vector2Scale(d, 1 / len);
-            }
-            move = len < 0.15f ? Vector2{ 0, 0 } : d;
+            Vector2 d = stickVector(f);
+            move = Vector2Length(d) < 0.15f ? Vector2{ 0, 0 } : d;
+        } else if (f.role == Role::Aim) {
+            // Stick di tiro: finche' il dito e' appoggiato si spara; conta solo lo spostamento
+            // laterale (tutto a destra o a sinistra = ci si gira alla massima velocita'), su e giu' niente
+            down[TB_ATTACK] = true;
+            aimVec = stickVector(f);
+            const float x = aimVec.x;
+            aimTurn = fabsf(x) < AIM_DEAD ? 0.0f : (x - copysignf(AIM_DEAD, x)) / (1 - AIM_DEAD);
         } else if (f.role == Role::Look) {
-            int idx = f.button >= 0 ? f.button : AttackIndex();
-            if (idx >= 0 && BUTTONS[idx].id == TB_ATTACK) down[TB_ATTACK] = true;
             lookDx += f.pos.x - f.last.x;
         }
         f.last = f.pos;
@@ -193,7 +190,7 @@ static void DrawIcon(Icon icon, Vector2 c, float r, Color col) {
 void TouchControls::Draw() const {
     const float s = Scale();
     for (const ButtonSpec& b : BUTTONS) {
-        if (b.layout != layout) continue;
+        if (b.layout != layout || b.id == TB_ATTACK) continue; // lo stick di tiro si disegna sotto
         Vector2 c = CenterOf(b);
         float r = b.r * s;
         bool held = down[b.id];
@@ -218,22 +215,20 @@ void TouchControls::Draw() const {
     DrawRing(base, STICK_RADIUS * s - 2.5f * s, STICK_RADIUS * s, 0, 360, 48, Fade(WHITE, 0.4f));
     DrawCircleV(knob, 34 * s, Fade(WHITE, 0.45f));
 
-    // Zona di mira: grande e alta a destra, come un joystick di tiro.
-    int attack = AttackIndex();
-    if (attack >= 0) {
-        Vector2 center = CenterOf(BUTTONS[attack]);
-        float ring = BUTTONS[attack].r * s;
-        for (const Finger& f : fingers) {
-            if (f.button == attack && f.role == Role::Look) {
-                Vector2 v = Vector2Subtract(f.pos, center);
-                float len = Vector2Length(v);
-                len = std::min(len, ring * 0.9f);
-                Vector2 knobPos = Vector2Add(center, Vector2Scale(Vector2Normalize(v), len));
-                DrawCircleV(center, ring, Fade(BLACK, 0.22f));
-                DrawRing(center, ring - 3.0f * s, ring, 0, 360, 48, Fade(WHITE, 0.5f));
-                DrawCircleV(knobPos, 16 * s, Fade(GOLD, 0.9f));
-                break;
-            }
+    // Stick di tiro: come quello sinistro, dorato mentre si spara
+    const ButtonSpec& a = BUTTONS[AttackIndex()];
+    Vector2 aBase = CenterOf(a), aKnob = aBase;
+    for (const Finger& f : fingers)
+        if (f.role == Role::Aim) {
+            aBase = f.start;
+            aKnob = Vector2Add(aBase, Vector2Scale(aimVec, STICK_RADIUS * s));
         }
+    const bool firing = down[TB_ATTACK];
+    DrawCircleV(aBase, STICK_RADIUS * s, Fade(firing ? GOLD : BLACK, firing ? 0.3f : 0.25f));
+    DrawRing(aBase, STICK_RADIUS * s - 2.5f * s, STICK_RADIUS * s, 0, 360, 48, Fade(WHITE, firing ? 0.8f : 0.4f));
+    DrawCircleV(aKnob, 34 * s, Fade(firing ? GOLD : WHITE, firing ? 0.8f : 0.45f));
+    if (!firing) {
+        const int size = (int)(13 * s);
+        DrawText(a.label, (int)(aBase.x - MeasureText(a.label, size) / 2.0f), (int)(aBase.y - size / 2.0f), size, Fade(BLACK, 0.7f));
     }
 }
