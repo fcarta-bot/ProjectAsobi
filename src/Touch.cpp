@@ -69,8 +69,8 @@ constexpr float STICK_GRAB = 1.25f; // uno stick fisso si prende entro 1,25 ragg
 constexpr float LOOK_BASE = 2.4f;  // visuale libera: sensibilita' alta di partenza, per girarsi anche in un angolino
 
 // Limiti delle barre dell'editor
-constexpr float SIZE_MIN = 0.5f, SIZE_MAX = 2.0f;
-constexpr float SENS_MIN = 0.3f, SENS_MAX = 3.0f;
+constexpr float SIZE_LO = 0.5f, SIZE_HI = 2.0f;
+constexpr float SENS_LO = 0.3f, SENS_HI = 3.0f;
 
 static float Scale() {
     return std::clamp(std::min(GetScreenWidth(), GetScreenHeight()) / 720.0f, 0.75f, 1.5f);
@@ -149,11 +149,11 @@ void TouchControls::LoadSetup(const std::string& text) {
         if (std::sscanf(parts[c + 1].c_str(), "%f,%f,%f,%f,%d", &k.x, &k.y, &k.size, &k.sens, &floating) != 5) return;
         k.x = std::clamp(k.x, 0.0f, 1.0f);
         k.y = std::clamp(k.y, 0.0f, 1.0f);
-        k.size = std::clamp(k.size, SIZE_MIN, SIZE_MAX);
-        k.sens = std::clamp(k.sens, SENS_MIN, SENS_MAX);
+        k.size = std::clamp(k.size, SIZE_LO, SIZE_HI);
+        k.sens = std::clamp(k.sens, SENS_LO, SENS_HI);
         k.floating = floating != 0 && CTL[c].stick;
     }
-    s.lookSens = std::clamp((float)std::atof(parts[TC_COUNT + 1].c_str()), SENS_MIN, SENS_MAX);
+    s.lookSens = std::clamp((float)std::atof(parts[TC_COUNT + 1].c_str()), SENS_LO, SENS_HI);
     s.valid = true;
     setup = s;
 }
@@ -453,9 +453,9 @@ void TouchControls::UpdateEditor() {
             }
         }
     }
-    if (dragSlider == SL_SIZE) c.size = SliderValue(p.slider[SL_SIZE], pos.x, SIZE_MIN, SIZE_MAX);
-    if (dragSlider == SL_SENS) c.sens = SliderValue(p.slider[SL_SENS], pos.x, SENS_MIN, SENS_MAX);
-    if (dragSlider == SL_LOOK) setup.lookSens = SliderValue(p.slider[SL_LOOK], pos.x, SENS_MIN, SENS_MAX);
+    if (dragSlider == SL_SIZE) c.size = SliderValue(p.slider[SL_SIZE], pos.x, SIZE_LO, SIZE_HI);
+    if (dragSlider == SL_SENS) c.sens = SliderValue(p.slider[SL_SENS], pos.x, SENS_LO, SENS_HI);
+    if (dragSlider == SL_LOOK) setup.lookSens = SliderValue(p.slider[SL_LOOK], pos.x, SENS_LO, SENS_HI);
     if (dragCtl >= 0) {
         // Il comando segue il dito, ma resta tutto dentro lo schermo
         const float r = CtlRadius(dragCtl);
@@ -504,8 +504,8 @@ void TouchControls::DrawEditor() const {
         DrawText(val, (int)(r.x + r.width - MeasureText(val, text)), (int)(r.y - text * 0.6f), (int)(text * 0.8f), GRAY);
     };
     const auto& c = setup.ctl[selected];
-    slider(SL_SIZE, "Grandezza", c.size, SIZE_MIN, SIZE_MAX);
-    if (p.hasSens) slider(SL_SENS, "Sensibilita'", c.sens, SENS_MIN, SENS_MAX);
+    slider(SL_SIZE, "Grandezza", c.size, SIZE_LO, SIZE_HI);
+    if (p.hasSens) slider(SL_SENS, "Sensibilita'", c.sens, SENS_LO, SENS_HI);
     else DrawText(CTL[selected].top ? "Tasto in alto: solo posizione e grandezza" : "Tasto: solo posizione e grandezza",
                   (int)x, (int)(p.slider[SL_SIZE].y + 46 * s), text, GRAY);
     if (p.hasMode) {
@@ -513,7 +513,7 @@ void TouchControls::DrawEditor() const {
         button(p.fixedBtn, "Fisso", !c.floating);
         button(p.floatBtn, "Mobile", c.floating);
     }
-    slider(SL_LOOK, "Visuale libera", setup.lookSens, SENS_MIN, SENS_MAX);
+    slider(SL_LOOK, "Visuale libera", setup.lookSens, SENS_LO, SENS_HI);
     DrawText("Trascina un comando per spostarlo, toccalo per sceglierlo", (int)x,
              (int)(p.panel.y + p.panel.height - 4 * s - text * 0.85f), (int)(text * 0.85f), Fade(WHITE, 0.5f));
 }
