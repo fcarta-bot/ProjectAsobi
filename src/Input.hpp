@@ -25,6 +25,7 @@ public:
     bool UsingTouch() const { return usingTouch; }
     void SetTouchLayout(TouchControls::Layout l) { touch.SetLayout(l); }
     float TouchLook() const { return usingTouch ? touch.LookDelta() : 0.0f; } // pixel trascinati per girarsi
+    float PitchAxis() const { return usingTouch ? touch.AimPitch() : 0.0f; }  // -1 giu' ... +1 su (stick di tiro)
     void DrawTouch() const { if (usingTouch) touch.Draw(); }
 
     // Indice di un joystick non ancora collegato su cui e' appena stato premuto START o A, altrimenti -1

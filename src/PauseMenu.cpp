@@ -76,8 +76,8 @@ void Game::DrawControlsPage() const {
     struct Row { const char* action; std::string keyboard; std::string joystick; std::string touch; };
     const Row rows[] = {
         { "Muoviti", "WASD / frecce su e giu'", "Stick sinistro", "Trascina a sinistra" },
-        { "Girati", "Mouse / frecce sx e dx", "Stick destro", "Trascina a destra" },
-        { "Attacca", "Click sinistro", std::string(b(GAMEPAD_BUTTON_RIGHT_TRIGGER_2)) + " o " + b(GAMEPAD_BUTTON_RIGHT_TRIGGER_1), "ATTACCA (tienilo)" },
+        { "Girati", "Mouse / frecce sx e dx", "Stick destro", "Stick a destra" },
+        { "Attacca", "Click sinistro", std::string(b(GAMEPAD_BUTTON_RIGHT_TRIGGER_2)) + " o " + b(GAMEPAD_BUTTON_RIGHT_TRIGGER_1), "Stick a destra (tienilo)" },
         { "Salta", "Spazio", b(GAMEPAD_BUTTON_RIGHT_FACE_DOWN), "SALTA" },
         { "Scatto", "Shift", std::string("Frecce o ") + b(GAMEPAD_BUTTON_LEFT_TRIGGER_1), "SCATTO" },
         { "Raccogli / torii", "E", b(GAMEPAD_BUTTON_RIGHT_FACE_LEFT), "PRENDI" },

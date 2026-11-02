@@ -96,12 +96,12 @@ void Game::DrawTutorial() const {
             break;
         case TIP_LOOK:
             text = say("Prova a guardarti intorno con lo stick destro: c'e' un sacco da vedere.",
-                       "Prova a trascinare il dito a destra: ti giri e vedi cosa c'e' intorno.",
+                       "Appoggia il pollice a destra e spostalo: ti giri e vedi cosa c'e' intorno.",
                        "Prova a muovere il mouse: ti giri e vedi cosa c'e' intorno.");
             break;
         case TIP_ATTACK:
             text = say(TextFormat("Ehi, ti stanno menando! Rispondi con %s.", input.Btn(GAMEPAD_BUTTON_RIGHT_TRIGGER_2)),
-                       "Ehi, ti stanno menando! Tieni premuto ATTACCA, e trascinalo per mirare.",
+                       "Ehi, ti stanno menando! Tieni il pollice a destra: spari, e spostandolo miri.",
                        "Ehi, ti stanno menando! Rispondi col tasto sinistro del mouse.");
             break;
         case TIP_JUMP:

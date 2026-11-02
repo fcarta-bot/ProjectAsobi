@@ -62,8 +62,8 @@ Appena si tocca lo schermo compaiono i comandi touch. Spariscono se si usa la ta
 | Azione | Come |
 |---|---|
 | Muoviti | Appoggia il dito nella meta' sinistra e trascinalo (stick virtuale) |
-| Attacca e girati | Stick di tiro **ATTACCA** in basso a destra: finche' il dito e' appoggiato si spara; spinto a destra o a sinistra ti giri (tutto di lato = alla massima velocita'), su e giu' non fanno niente |
-| Girati senza sparare | Trascina il dito nella meta' destra, fuori dai tasti |
+| Attacca e mira | Stick di tiro: appoggia il pollice nella meta' destra, fuori dai tasti (parte da dove lo appoggi). Finche' e' appoggiato spari; spostandolo la visuale si gira a destra e a sinistra e guarda in alto e in basso, col mirino sempre al centro. Piccoli spostamenti = mira precisa, tutto di lato = giro veloce |
+| Girati senza sparare | Con lo stick di tiro gia' preso, trascina un secondo dito a destra |
 | Salta / scatto / cambia arma / raccogli | **SALTA**, **SCATTO**, **ARMA**, **PRENDI** |
 | Menu di partita / menu di gioco | **BORSA** e il tasto pausa, in alto a destra |
 | Nei menu | Frecce a sinistra, **OK** e **INDIETRO** a destra |

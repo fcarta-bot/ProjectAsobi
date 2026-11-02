@@ -1,5 +1,6 @@
 #include "Sky.hpp"
 #include <cmath>
+#include "rlgl.h"
 #include <random>
 #include <vector>
 
@@ -140,11 +141,20 @@ void Tri(Vector2 a, Vector2 b, Vector2 c, Color col) {
 
 } // namespace
 
-void DrawSky(const District& d, float yaw, float fovy) {
+void DrawSky(const District& d, float yaw, float fovy, float pitch) {
     const int sw = GetScreenWidth(), sh = GetScreenHeight();
-    const float horizonY = sh * 0.5f; // la telecamera non guarda ne' su ne' giu'
+    const float horizonY = sh * 0.5f; // orizzonte con lo sguardo dritto; guardando su o giu' si sposta tutto
     const float scale = sh / 720.0f;
     const float pxPerRad = horizonY / std::tan(fovy * DEG2RAD * 0.5f);
+
+    // Guardando in alto l'orizzonte scende (e viceversa): si disegna il cielo spostato
+    // e si riempie la striscia rimasta scoperta in alto (cielo) o in basso (orizzonte)
+    const float shift = std::tan(pitch) * pxPerRad;
+    if (shift > 0) DrawRectangle(0, 0, sw, (int)shift + 1, d.skyTop);
+    else if (shift < 0) DrawRectangle(0, sh + (int)shift - 1, sw, (int)-shift + 2, d.horizon);
+    rlDrawRenderBatchActive();
+    rlPushMatrix();
+    rlTranslatef(0, shift, 0);
 
     DrawRectangleGradientV(0, 0, sw, (int)horizonY + 1, d.skyTop, d.horizon);
     DrawRectangle(0, (int)horizonY, sw, sh - (int)horizonY, d.horizon);
@@ -307,4 +317,5 @@ void DrawSky(const District& d, float yaw, float fovy) {
                 break;
         }
     }
+    rlPopMatrix();
 }

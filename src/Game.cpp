@@ -17,6 +17,8 @@ constexpr float TOUCH_TURN = 0.005f;   // radianti per pixel trascinato sullo sc
 constexpr float GRAVITY = 22.0f;       // caselle al secondo quadrato
 constexpr float JUMP_SPEED = 7.0f;     // basta per saltare su un'auto (circa 1.1 caselle)
 constexpr float PLAYER_SHOT_H = 0.45f; // altezza dei colpi sopra i piedi
+constexpr float PITCH_SPEED = 1.2f;    // radianti al secondo guardando su e giu' (stick di tiro)
+constexpr float MAX_PITCH = 0.5f;      // quanto si puo' guardare in alto o in basso (circa 30 gradi)
 constexpr float EXPLOSION_RADIUS = 56; // pixel
 constexpr float SWING_TIME = 0.22f;
 
@@ -133,6 +135,7 @@ void Game::BuildFloor(unsigned seed) {
     player.z = player.vz = 0;
     player.onGround = true;
     player.yaw = 0; // si parte guardando gli altari accanto alla partenza
+    player.pitch = 0;
     player.aim = { 1, 0 };
     props.Generate(dungeon, CurrentDistrict(), player.pos);
     nav.Build(dungeon, props);
@@ -151,7 +154,8 @@ void Game::BuildFloor(unsigned seed) {
 void Game::SyncCamera() {
     float bob = player.onGround ? sinf(walkCycle) * 0.03f : 0.0f;
     camera.position = To3D(player.pos, EYE_HEIGHT + player.z + bob);
-    camera.target = Vector3Add(camera.position, { player.aim.x, 0, player.aim.y });
+    const float flat = cosf(player.pitch);
+    camera.target = Vector3Add(camera.position, { player.aim.x * flat, sinf(player.pitch), player.aim.y * flat });
 }
 
 // In partita il mouse sparisce e gira la visuale; nei menu torna il puntatore normale
@@ -399,6 +403,7 @@ void Game::UpdatePlayer(float dt) {
     skipMouseDelta = false;
     player.yaw = fmodf(player.yaw + turn, 2 * PI);
     player.aim = { cosf(player.yaw), sinf(player.yaw) };
+    player.pitch = std::clamp(player.pitch + input.PitchAxis() * PITCH_SPEED * dt, -MAX_PITCH, MAX_PITCH);
 
     // Il movimento e' relativo allo sguardo: avanti, indietro e passi laterali
     const Vector2 right{ -player.aim.y, player.aim.x };
@@ -530,8 +535,11 @@ void Game::Attack() {
     for (int i = 0; i < shots; ++i) {
         float a = player.yaw + (i - (shots - 1) / 2.0f) * w.spread + (Rand01() * 2 - 1) * w.jitter;
         Projectile p;
+        // Mirando in alto o in basso il colpo va un po' meno avanti e sale o scende
+        const float speed = stats.projSpeed * w.speedMult, flat = cosf(player.pitch);
         p.pos = Vector2Add(player.pos, Vector2Scale(player.aim, player.radius * 0.5f));
-        p.vel = { cosf(a) * stats.projSpeed * w.speedMult, sinf(a) * stats.projSpeed * w.speedMult };
+        p.vel = { cosf(a) * speed * flat, sinf(a) * speed * flat };
+        p.vz = sinf(player.pitch) * speed / TILE;
         p.height = player.z + PLAYER_SHOT_H;
         p.crit = Rand01() < stats.critChance;
         p.damage = stats.damage * w.damageMult * (p.crit ? stats.critMult : 1.0f);
@@ -610,6 +618,12 @@ void Game::UpdateProjectiles(float dt) {
         if (!p.alive) continue;
         p.life -= dt;
         Vector2 next = Vector2Add(p.pos, Vector2Scale(p.vel, dt));
+        p.height += p.vz * dt;
+        if (p.height < 0) { // mirando in basso il colpo finisce a terra
+            if (p.explosive) Explode(p.pos, 0, p.damage, p.incendiary);
+            p.alive = false;
+            continue;
+        }
 
         if (solid(next, p.height)) {
             if (p.bouncesLeft > 0) {
@@ -920,7 +934,7 @@ void Game::Draw() {
     }
     const District& d = CurrentDistrict();
     ClearBackground(d.horizon);
-    DrawSky(d, player.yaw, camera.fovy);
+    DrawSky(d, player.yaw, camera.fovy, player.pitch);
 
     BeginMode3D(camera);
     DrawWorld();

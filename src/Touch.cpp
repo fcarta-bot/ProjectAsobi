@@ -45,10 +45,9 @@ static const ButtonSpec BUTTONS[] = {
 };
 
 constexpr float STICK_RADIUS = 80;        // quanto spostare il dito per correre al massimo
-constexpr float STICK_ZONE_X = 0.45f;     // lo stick si appoggia nella parte sinistra dello schermo...
-constexpr float STICK_ZONE_TOP = 0.25f;   // ...sotto questa quota (sopra ci sono vita e armi)
-constexpr float AIM_GRAB = 1.3f;          // lo stick di tiro si prende entro 1,3 raggi dal suo posto
-constexpr float AIM_DEAD = 0.2f;          // sotto questa spinta laterale non ci si gira (si spara e basta)
+constexpr float STICK_ZONE_X = 0.45f;     // a sinistra di qui il dito fa da stick per muoversi, a destra da stick di tiro
+constexpr float AIM_DEAD = 0.2f;          // sotto questa spinta lo stick di tiro non gira la visuale (si spara e basta)
+constexpr float AIM_TURN = 0.7f;          // velocita' massima di rotazione dello stick di tiro (1 = quella dello stick destro)
 constexpr Vector2 STICK_HOME{ 160, -170 }; // dove si disegna lo stick a riposo (dall'angolo in basso a sinistra)
 
 static float Scale() {
@@ -97,7 +96,7 @@ void TouchControls::Update() {
     tapped = false;
     move = { 0, 0 };
     lookDx = 0;
-    aimTurn = 0;
+    aimTurn = aimPitch = 0;
     aimVec = { 0, 0 };
 
     // Allinea l'elenco delle dita con quelle appoggiate adesso
@@ -115,16 +114,16 @@ void TouchControls::Update() {
         // Dito nuovo: decide subito a cosa serve, in base a dove si appoggia
         Finger f{ t.id, Role::None, -1, t.pos, t.pos, t.pos };
         if (layout == Layout::Game) {
-            const int attack = AttackIndex();
-            const bool aimFree = std::none_of(fingers.begin(), fingers.end(), [](const Finger& o) { return o.role == Role::Aim; });
-            if ((f.button = ButtonAt(t.pos, layout)) >= 0) {
-                f.role = Role::Button; // i tasti vicini hanno la precedenza sul bordo dello stick
-            } else if (aimFree && Vector2Distance(t.pos, CenterOf(BUTTONS[attack])) < BUTTONS[attack].r * Scale() * AIM_GRAB) {
-                f.role = Role::Aim; // stick di tiro: parte da dove si appoggia il dito, come quello sinistro
-            } else {
-                const bool stickZone = t.pos.x < GetScreenWidth() * STICK_ZONE_X && t.pos.y > GetScreenHeight() * STICK_ZONE_TOP;
-                f.role = stickZone ? Role::Stick : Role::Look;
-            }
+            // I tasti hanno la precedenza; fuori dai tasti la meta' sinistra e' lo stick per muoversi e
+            // la destra lo stick di tiro, che parte da dove si appoggia il dito (come quello sinistro).
+            // Un secondo dito a destra, mentre lo stick di tiro e' gia' preso, gira solo la visuale.
+            auto taken = [&](Role r) {
+                auto has = [r](const Finger& o) { return o.role == r; };
+                return std::any_of(now.begin(), now.end(), has) || std::any_of(fingers.begin(), fingers.end(), has);
+            };
+            if ((f.button = ButtonAt(t.pos, layout)) >= 0) f.role = Role::Button;
+            else if (t.pos.x < GetScreenWidth() * STICK_ZONE_X) f.role = taken(Role::Stick) ? Role::None : Role::Stick;
+            else f.role = taken(Role::Aim) ? Role::Look : Role::Aim;
         } else if (layout == Layout::Tap) {
             tapped = true;
         } else if ((f.button = ButtonAt(t.pos, layout)) >= 0) {
@@ -157,8 +156,14 @@ void TouchControls::Update() {
             // laterale (tutto a destra o a sinistra = ci si gira alla massima velocita'), su e giu' niente
             down[TB_ATTACK] = true;
             aimVec = stickVector(f);
-            const float x = aimVec.x;
-            aimTurn = fabsf(x) < AIM_DEAD ? 0.0f : (x - copysignf(AIM_DEAD, x)) / (1 - AIM_DEAD);
+            // Ogni asse: niente sotto la zona morta, poi la risposta cresce col quadrato, cosi'
+            // con piccoli spostamenti si mira con precisione e solo spingendo tutto si gira veloce
+            auto curve = [](float v) {
+                float n = std::max(0.0f, (fabsf(v) - AIM_DEAD) / (1 - AIM_DEAD));
+                return copysignf(n * n, v);
+            };
+            aimTurn = curve(aimVec.x) * AIM_TURN;
+            aimPitch = -curve(aimVec.y); // dito in su = guarda in su
         } else if (f.role == Role::Look) {
             lookDx += f.pos.x - f.last.x;
         }

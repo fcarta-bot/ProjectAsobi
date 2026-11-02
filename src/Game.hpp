@@ -26,6 +26,7 @@ struct Player {
     bool onGround = true;
     float yaw = 0;         // direzione dello sguardo in radianti (0 = verso destra sulla mappa)
     Vector2 aim{ 1, 0 };   // la stessa direzione come vettore, ricalcolata da yaw
+    float pitch = 0;       // sguardo in su (+) o in giu' (-), in radianti: i colpi salgono o scendono
     Vector2 dashDir{};
     float radius = 12;
     float hp = 100;
@@ -163,6 +164,7 @@ enum class EnemyShot { Wind, Laser, Rock, Spirit, BlueFire, Gossip }; // tengu, 
 struct Projectile {
     Vector2 pos{}, vel{};
     float height = 0.45f; // quota del colpo: serve per i salti e per gli oggetti bassi
+    float vz = 0;         // salita (+) o discesa (-) in caselle al secondo, se si mirava in alto o in basso
     float radius = 4, damage = 10, life = 1;
     bool fromPlayer = true;
     bool crit = false;
