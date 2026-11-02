@@ -466,7 +466,7 @@ void TouchControls::UpdateEditor() {
 }
 
 void TouchControls::DrawEditor() const {
-    const float s = Scale(), sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
+    const float s = Scale();
     DrawControls(true);
     // Il comando scelto: anello dorato
     const Vector2 sc = CtlCenter(selected);
