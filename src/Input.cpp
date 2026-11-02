@@ -48,14 +48,14 @@ void Input::Update() {
     up = IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W) || PadPressed(GAMEPAD_BUTTON_LEFT_FACE_UP) ||
          (stickUp && !stickUpHeld);
     down = IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S) || PadPressed(GAMEPAD_BUTTON_LEFT_FACE_DOWN) ||
-            (stickDown && !stickDownHeld);
+           (stickDown && !stickDownHeld);
     stickUpHeld = stickUp;
     stickDownHeld = stickDown;
 
     float lx = pad >= 0 ? GetGamepadAxisMovement(pad, GAMEPAD_AXIS_LEFT_X) : 0.0f;
     bool stickLeft = lx < -0.6f, stickRight = lx > 0.6f;
     left = IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A) || PadPressed(GAMEPAD_BUTTON_LEFT_FACE_LEFT) ||
-            PadPressed(GAMEPAD_BUTTON_LEFT_TRIGGER_1) || (stickLeft && !stickLeftHeld);
+           PadPressed(GAMEPAD_BUTTON_LEFT_TRIGGER_1) || (stickLeft && !stickLeftHeld);
     right = IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D) || PadPressed(GAMEPAD_BUTTON_LEFT_FACE_RIGHT) ||
             PadPressed(GAMEPAD_BUTTON_RIGHT_TRIGGER_1) || (stickRight && !stickRightHeld);
     stickLeftHeld = stickLeft;
@@ -106,14 +106,13 @@ Vector2 Input::Move() const {
 }
 
 Vector2 Input::AimStick() const {
-    Vector2 right = Stick(GAMEPAD_AXIS_RIGHT_X, GAMEPAD_AXIS_RIGHT_Y);
-    if (Vector2Length(right) > 0) return right;
-    return Stick(GAMEPAD_AXIS_LEFT_X, GAMEPAD_AXIS_LEFT_Y);
+    // Solo lo stick destro: il sinistro serve a muoversi, se girasse anche la visuale
+    // camminare di lato farebbe ruotare il personaggio
+    return Stick(GAMEPAD_AXIS_RIGHT_X, GAMEPAD_AXIS_RIGHT_Y);
 }
 
 float Input::TurnAxis() const {
-    // Lo stick destro mira come se fosse il sinistro quando e' attivo; fallback sul sinistro per compatibilita'.
-    float turn = AimStick().x;
+    float turn = AimStick().x; // stick destro: girarsi (analogico, piu' lo spingi piu' giri veloce)
     if (IsKeyDown(KEY_LEFT)) turn -= 1;
     if (IsKeyDown(KEY_RIGHT)) turn += 1;
     return std::clamp(turn, -1.0f, 1.0f);
@@ -122,7 +121,7 @@ float Input::TurnAxis() const {
 bool Input::FireDown() const {
     // Col joystick si spara col grilletto destro (lo stick destro serve a girarsi)
     return IsMouseButtonDown(MOUSE_BUTTON_LEFT) ||
-            PadDown(GAMEPAD_BUTTON_RIGHT_TRIGGER_2) || PadDown(GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
+           PadDown(GAMEPAD_BUTTON_RIGHT_TRIGGER_2) || PadDown(GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
 }
 
 bool Input::JumpPressed() const {
@@ -152,7 +151,7 @@ bool Input::SwapWeaponPressed() const {
 // touchpad, Share/Visualizza/Select e tasto PS/Xbox per il gioco (pausa, comandi, esci)
 bool Input::GameMenuPressed() const {
     return IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_P) || TouchpadPressed(pad) ||
-            PadPressed(GAMEPAD_BUTTON_MIDDLE_LEFT) || PadPressed(GAMEPAD_BUTTON_MIDDLE);
+           PadPressed(GAMEPAD_BUTTON_MIDDLE_LEFT) || PadPressed(GAMEPAD_BUTTON_MIDDLE);
 }
 
 bool Input::MatchMenuPressed() const {
@@ -161,7 +160,7 @@ bool Input::MatchMenuPressed() const {
 
 bool Input::PadMenuButtonPressed() const {
     return PadPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT) || PadPressed(GAMEPAD_BUTTON_MIDDLE_LEFT) ||
-            PadPressed(GAMEPAD_BUTTON_MIDDLE) || TouchpadPressed(pad);
+           PadPressed(GAMEPAD_BUTTON_MIDDLE) || TouchpadPressed(pad);
 }
 
 bool Input::MenuPressed() const {
@@ -218,12 +217,12 @@ const char* Input::ButtonName(PadFamily f, int button) {
 
 bool Input::ConfirmPressed() const {
     return IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_SPACE) ||
-            PadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+           PadPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
 }
 
 bool Input::BackPressed() const {
     return IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_Q) || IsKeyPressed(KEY_BACKSPACE) ||
-            PadPressed(GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);
+           PadPressed(GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);
 }
 
 bool Input::PadDown(int button) const {

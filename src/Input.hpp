@@ -60,7 +60,7 @@ private:
     bool PadDown(int button) const;
     bool PadPressed(int button) const;
     Vector2 Stick(int axisX, int axisY) const;
-    Vector2 AimStick() const; // stick destro con fallback sul sinistro per una mira analogica continua
+    Vector2 AimStick() const; // stick destro, per girarsi
 
     int pad = -1;
     bool usingPad = false;
